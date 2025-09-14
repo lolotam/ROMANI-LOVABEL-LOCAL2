@@ -222,8 +222,31 @@ export default function Documents() {
     });
     return filtered;
   }, [documents, searchTerm, selectedStatus, selectedType, activeTab]);
-  const greenFutureDocuments = filteredDocuments.filter(doc => doc.companies?.name === 'Green Future' || doc.employees?.companies?.name === 'Green Future');
-  const cureMedDocuments = filteredDocuments.filter(doc => doc.companies?.name === 'CureMed' || doc.employees?.companies?.name === 'CureMed');
+  // Dynamic company documents - group documents by company
+  const documentsByCompany = useMemo(() => {
+    const companyGroups: { [key: string]: Document[] } = {};
+
+    companies.forEach(company => {
+      companyGroups[company.name] = filteredDocuments.filter(doc =>
+        doc.companies?.name === company.name || doc.employees?.companies?.name === company.name
+      );
+    });
+
+    return companyGroups;
+  }, [filteredDocuments, companies]);
+
+  // Dynamic employee groups by company
+  const employeesByCompany = useMemo(() => {
+    const employeeGroups: { [key: string]: Employee[] } = {};
+
+    companies.forEach(company => {
+      employeeGroups[company.name] = employees.filter(emp =>
+        companies.find(c => c.id === emp.company_id)?.name === company.name && emp.is_active !== false
+      );
+    });
+
+    return employeeGroups;
+  }, [employees, companies]);
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments(prev => prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]);
   };
@@ -723,13 +746,39 @@ export default function Documents() {
             </div>
             
             <TabsContent value="company" className="space-y-8">
-              <CompanySection title="Green Future" docs={greenFutureDocuments} companyName="Green Future" />
-              <CompanySection title="CureMed" docs={cureMedDocuments} companyName="CureMed" />
+              {companies.map((company) => (
+                <CompanySection
+                  key={company.id}
+                  title={company.name_ar || company.name}
+                  docs={documentsByCompany[company.name] || []}
+                  companyName={company.name}
+                />
+              ))}
+              {companies.length === 0 && (
+                <div className="text-center py-12">
+                  <Building2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">لا توجد شركات مضافة في النظام</p>
+                  <p className="text-sm text-muted-foreground mt-2">قم بإضافة شركات من صفحة الإعدادات</p>
+                </div>
+              )}
             </TabsContent>
-            
+
             <TabsContent value="employee" className="space-y-8">
-              <EmployeeSection title="موظفو Green Future" companyName="Green Future" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'Green Future' && emp.is_active !== false)} />
-              <EmployeeSection title="موظفو CureMed" companyName="CureMed" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'CureMed' && emp.is_active !== false)} />
+              {companies.map((company) => (
+                <EmployeeSection
+                  key={company.id}
+                  title={`موظفو ${company.name_ar || company.name}`}
+                  companyName={company.name}
+                  employees={employeesByCompany[company.name] || []}
+                />
+              ))}
+              {companies.length === 0 && (
+                <div className="text-center py-12">
+                  <User className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">لا توجد شركات مضافة في النظام</p>
+                  <p className="text-sm text-muted-foreground mt-2">قم بإضافة شركات من صفحة الإعدادات</p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </motion.div>
