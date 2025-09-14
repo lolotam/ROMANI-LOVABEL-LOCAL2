@@ -172,10 +172,17 @@ export default function Dashboard() {
           <p className="text-muted-foreground">
             لوحة التحكم الرئيسية
           </p>
+          {/* CureMed Logo */}
+          <div className="mt-4 mb-6">
+            <img
+              src="/curemed-logo.svg"
+              alt="CureMed Logo"
+              className="mx-auto h-10 w-auto opacity-80 hover:opacity-100 transition-opacity duration-300"
+            />
+          </div>
         </div>
 
         {/* Main Content */}
-        <div className="max-w-7xl mx-auto">
         {/* Welcome Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -315,7 +322,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </motion.div>
-        </div>
       </div>
     </Layout>
   );

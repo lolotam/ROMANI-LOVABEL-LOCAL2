@@ -69,6 +69,7 @@ interface Employee {
   position?: string;
   hire_date?: string;
   company_id: string;
+  is_active?: boolean;
   companies?: {
     name: string;
     name_ar: string;
@@ -727,8 +728,8 @@ export default function Documents() {
             </TabsContent>
             
             <TabsContent value="employee" className="space-y-8">
-              <EmployeeSection title="موظفو Green Future" companyName="Green Future" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'Green Future')} />
-              <EmployeeSection title="موظفو CureMed" companyName="CureMed" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'CureMed')} />
+              <EmployeeSection title="موظفو Green Future" companyName="Green Future" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'Green Future' && emp.is_active !== false)} />
+              <EmployeeSection title="موظفو CureMed" companyName="CureMed" employees={employees.filter(emp => companies.find(c => c.id === emp.company_id)?.name === 'CureMed' && emp.is_active !== false)} />
             </TabsContent>
           </Tabs>
         </motion.div>

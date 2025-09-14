@@ -188,9 +188,34 @@
 
   .neomorphism-inset {
     background: hsl(var(--background));
-    box-shadow: 
+    box-shadow:
       inset 10px 10px 20px hsl(var(--foreground) / 0.1),
       inset -10px -10px 20px hsl(255 255 255 / 0.8);
+  }
+
+  /* Force date inputs to show dd/mm/yyyy format */
+  input[type="date"] {
+    /* Set locale to British English for dd/mm/yyyy format */
+    -webkit-locale: "en-GB";
+    locale: "en-GB";
+  }
+
+  input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    /* Try to force dd/mm/yyyy display order */
+    unicode-bidi: bidi-override;
+    direction: ltr;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-day-field {
+    order: 1;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-month-field {
+    order: 2;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-year-field {
+    order: 3;
   }
 }
 

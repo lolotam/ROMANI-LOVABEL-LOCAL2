@@ -31,7 +31,10 @@ import {
   List, 
   MoreVertical,
   ArrowLeft,
-  UserCheck
+  UserCheck,
+  Camera,
+  ImagePlus,
+  X
 } from 'lucide-react';
 
 interface Document {
@@ -66,6 +69,8 @@ interface Employee {
   phone?: string;
   position?: string;
   company_id: string;
+  photo?: string;
+  is_active?: boolean;
   companies?: {
     name: string;
     name_ar: string;
@@ -111,6 +116,8 @@ export default function EmployeeDocuments() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
+  const [employeePhoto, setEmployeePhoto] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -139,7 +146,21 @@ export default function EmployeeDocuments() {
 
       if (error) throw error;
       if (data && data.length > 0) {
-        setEmployee(data[0]);
+        const employee = data[0];
+
+        // Check if employee is active
+        if (employee.is_active === false) {
+          toast({
+            title: 'غير مصرح',
+            description: 'هذا الموظف غير نشط ولا يمكن عرض وثائقه',
+            variant: 'destructive'
+          });
+          navigate('/employees');
+          return;
+        }
+
+        setEmployee(employee);
+        setEmployeePhoto(employee.photo || null);
       }
     } catch (error) {
       console.error('Error fetching employee:', error);
@@ -354,6 +375,88 @@ export default function EmployeeDocuments() {
     }
   };
 
+  const handlePhotoUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    const file = files[0];
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'خطأ',
+        description: 'يرجى اختيار صورة صالحة',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'خطأ',
+        description: 'حجم الصورة يجب أن يكون أقل من 5 ميجابايت',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string;
+
+        // Update employee photo in database
+        const { error } = await jsonDatabase
+          .update('employees', employeeId!, { photo: base64Data });
+
+        if (error) throw error;
+
+        setEmployeePhoto(base64Data);
+        setIsPhotoUploadOpen(false);
+
+        toast({
+          title: 'تم بنجاح',
+          description: 'تم رفع صورة الموظف بنجاح'
+        });
+      };
+
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في رفع الصورة',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!confirm('هل أنت متأكد من حذف صورة الموظف؟')) return;
+
+    try {
+      const { error } = await jsonDatabase
+        .update('employees', employeeId!, { photo: null });
+
+      if (error) throw error;
+
+      setEmployeePhoto(null);
+
+      toast({
+        title: 'تم بنجاح',
+        description: 'تم حذف صورة الموظف بنجاح'
+      });
+    } catch (error) {
+      console.error('Error removing photo:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في حذف الصورة',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const DocumentCard = ({ doc }: { doc: Document }) => (
     <Card className="group hover:shadow-elegant transition-all duration-300 relative">
       <CardHeader className="pb-3">
@@ -382,7 +485,7 @@ export default function EmployeeDocuments() {
         {doc.expiry_date && (
           <div className="flex items-center text-sm text-muted-foreground">
             <Calendar className="h-4 w-4 ml-2" />
-            <span>ينتهي: {new Date(doc.expiry_date).toLocaleDateString('ar-SA')}</span>
+            <span>ينتهي: {new Date(doc.expiry_date).toLocaleDateString('en-GB').replace(/\//g, '-')} ميلادي</span>
           </div>
         )}
         
@@ -462,34 +565,82 @@ export default function EmployeeDocuments() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+          className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
         >
-          <div>
-            <div className="flex items-center space-x-2 mb-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/employees')}
-                className="hover:bg-accent"
-              >
-                <ArrowLeft className="h-4 w-4 ml-1" />
-                العودة
-              </Button>
+          <div className="flex flex-col sm:flex-row items-start gap-6 flex-1">
+            {/* Employee Photo Section */}
+            <div className="flex-shrink-0">
+              <div className="relative group">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-primary/20 overflow-hidden bg-gray-50 shadow-elegant hover:shadow-glow transition-all duration-300">
+                  {employeePhoto ? (
+                    <img
+                      src={employeePhoto}
+                      alt={employee.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+                      <User className="h-10 w-10 text-primary/60" />
+                    </div>
+                  )}
+                </div>
+                <div className="absolute -bottom-1 -right-1">
+                  <Button
+                    size="sm"
+                    className="h-8 w-8 rounded-full shadow-lg"
+                    onClick={() => setIsPhotoUploadOpen(true)}
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                </div>
+                {employeePhoto && (
+                  <div className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-6 w-6 rounded-full"
+                      onClick={handleRemovePhoto}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
-            <h1 className="text-3xl font-bold text-gradient">وثائق {employee.name}</h1>
-            <div className="flex items-center space-x-2 mt-2">
-              <UserCheck className="h-5 w-5 text-primary" />
-              <span className="text-muted-foreground">{employee.companies?.name}</span>
-              {employee.position && (
-                <>
-                  <span className="text-muted-foreground">•</span>
-                  <Badge variant="outline">{employee.position}</Badge>
-                </>
-              )}
+
+            {/* Employee Info Section */}
+            <div className="flex-1">
+              <div className="flex items-center space-x-2 mb-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/employees')}
+                  className="hover:bg-accent"
+                >
+                  <ArrowLeft className="h-4 w-4 ml-1" />
+                  العودة
+                </Button>
+              </div>
+              <div className="relative inline-block">
+                <h1 className="text-3xl font-bold text-gradient">وثائق {employee.name}</h1>
+                <div className="absolute -top-2 -left-2 bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-lg">
+                  {documents.length}
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 mt-2">
+                <UserCheck className="h-5 w-5 text-primary" />
+                <span className="text-muted-foreground">{employee.companies?.name}</span>
+                {employee.position && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <Badge variant="outline">{employee.position}</Badge>
+                  </>
+                )}
+              </div>
+              <p className="text-muted-foreground mt-1">
+                إجمالي {documents.length} وثيقة
+              </p>
             </div>
-            <p className="text-muted-foreground mt-1">
-              إجمالي {documents.length} وثيقة
-            </p>
           </div>
           
           <div className="flex gap-2">
@@ -734,13 +885,13 @@ export default function EmployeeDocuments() {
                   {selectedDocument.issue_date && (
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">تاريخ الإصدار</Label>
-                      <p className="text-sm">{new Date(selectedDocument.issue_date).toLocaleDateString('ar-SA')}</p>
+                      <p className="text-sm">{new Date(selectedDocument.issue_date).toLocaleDateString('en-GB').replace(/\//g, '-')}</p>
                     </div>
                   )}
                   {selectedDocument.expiry_date && (
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">تاريخ انتهاء الصلاحية</Label>
-                      <p className="text-sm">{new Date(selectedDocument.expiry_date).toLocaleDateString('ar-SA')}</p>
+                      <p className="text-sm">{new Date(selectedDocument.expiry_date).toLocaleDateString('en-GB').replace(/\//g, '-')}</p>
                     </div>
                   )}
                   {selectedDocument.ministries && (
@@ -773,6 +924,28 @@ export default function EmployeeDocuments() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Photo Upload Dialog */}
+        <Dialog open={isPhotoUploadOpen} onOpenChange={setIsPhotoUploadOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>رفع صورة الموظف</DialogTitle>
+              <DialogDescription>
+                اختر صورة للموظف {employee.name}
+              </DialogDescription>
+            </DialogHeader>
+            <UploadDropzone
+              onFilesAccepted={handlePhotoUpload}
+              maxFiles={1}
+              maxFileSize={5 * 1024 * 1024} // 5MB
+              acceptedFileTypes={['image/*']}
+              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center"
+            />
+            <div className="text-xs text-muted-foreground text-center">
+              حجم الصورة الأقصى: 5 ميجابايت • الصيغ المدعومة: JPG, PNG, GIF
+            </div>
           </DialogContent>
         </Dialog>
       </div>

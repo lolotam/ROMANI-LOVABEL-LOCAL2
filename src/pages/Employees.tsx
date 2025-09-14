@@ -9,10 +9,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Users,
   Plus,
@@ -48,6 +50,7 @@ interface Employee {
   residency_status?: 'expired' | 'less_than_week' | 'less_than_month' | 'valid';
   company_id: string;
   created_at: string;
+  is_active?: boolean;
   companies?: {
     name: string;
     name_ar: string;
@@ -79,6 +82,41 @@ export default function Employees() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+
+
+  // Helper function to convert date from storage format (yyyy-mm-dd) to HTML5 date input format (yyyy-mm-dd)
+  const formatDateForInput = (dateString: string): string => {
+    if (!dateString) return '';
+    // If date is already in yyyy-mm-dd format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    // If date is in dd/mm/yyyy format, convert to yyyy-mm-dd
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+      const parts = dateString.split('/');
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dateString;
+  };
+
+  // Helper function to format date for display in dd-mm-yyyy format
+  const formatDateForDisplay = (dateString: string): string => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) return '';
+
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return '';
+    }
+  };
+
   // Safeguard current sort state
   const currentSortField: SortField = sortField ?? 'name';
   const currentSortDirection: SortDirection = sortDirection ?? 'asc';
@@ -92,7 +130,8 @@ export default function Employees() {
     birth_date: '',
     civil_id_no: '',
     residency_expiry_date: '',
-    company_id: ''
+    company_id: '',
+    is_active: true
   });
 
   const positionOptions: PositionType[] = ['مدير', 'مندوب طبي', 'مندوب شؤون', 'سائق', 'محاسب', 'سكرتير'];
@@ -152,9 +191,9 @@ export default function Employees() {
                            employee.mobile_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            employee.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            employee.position?.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesCompany = selectedCompany === 'all' || employee.company_id === selectedCompany;
-      
+
       return matchesSearch && matchesCompany;
     });
 
@@ -195,7 +234,8 @@ export default function Employees() {
       birth_date: '',
       civil_id_no: '',
       residency_expiry_date: '',
-      company_id: ''
+      company_id: '',
+      is_active: true
     });
   };
 
@@ -246,7 +286,10 @@ export default function Employees() {
     try {
       const insertData = {
         ...formData,
-        position: formData.position as PositionType | undefined
+        position: formData.position as PositionType | undefined,
+        birth_date: formData.birth_date,
+        hire_date: formData.hire_date,
+        residency_expiry_date: formData.residency_expiry_date
       };
 
       const { error } = await jsonDatabase.insert('employees', [insertData]);
@@ -277,7 +320,10 @@ export default function Employees() {
     try {
       const updateData = {
         ...formData,
-        position: formData.position as PositionType | undefined
+        position: formData.position as PositionType | undefined,
+        birth_date: formData.birth_date,
+        hire_date: formData.hire_date,
+        residency_expiry_date: formData.residency_expiry_date
       };
 
       const { error } = await jsonDatabase.update('employees', selectedEmployee.id, updateData);
@@ -334,17 +380,18 @@ export default function Employees() {
       phone: employee.phone || '',
       mobile_no: employee.mobile_no || '',
       position: employee.position || '' as PositionType | '',
-      hire_date: employee.hire_date || '',
-      birth_date: employee.birth_date || '',
+      hire_date: formatDateForInput(employee.hire_date || ''),
+      birth_date: formatDateForInput(employee.birth_date || ''),
       civil_id_no: employee.civil_id_no || '',
-      residency_expiry_date: employee.residency_expiry_date || '',
-      company_id: employee.company_id
+      residency_expiry_date: formatDateForInput(employee.residency_expiry_date || ''),
+      company_id: employee.company_id,
+      is_active: employee.is_active !== undefined ? employee.is_active : true
     });
     setIsEditDialogOpen(true);
   };
 
   const handleViewDocuments = (employeeId: string) => {
-    navigate(`/employee-documents/${employeeId}`);
+    navigate(`/documents/employee/${employeeId}`);
   };
 
   const exportToCSV = () => {
@@ -557,12 +604,11 @@ export default function Employees() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="birth_date">تاريخ الميلاد</Label>
-                      <Input
-                        id="birth_date"
-                        type="date"
+                      <Label htmlFor="birth_date">تاريخ الميلاد (dd/mm/yyyy)</Label>
+                      <DateInput
                         value={formData.birth_date}
-                        onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
+                        onChange={(value) => setFormData({...formData, birth_date: value})}
+                        name="birth_date"
                       />
                     </div>
                     <div>
@@ -574,22 +620,31 @@ export default function Employees() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="residency_expiry_date">تاريخ انتهاء الإقامة</Label>
-                      <Input
-                        id="residency_expiry_date"
-                        type="date"
+                      <Label htmlFor="residency_expiry_date">تاريخ انتهاء الإقامة (dd/mm/yyyy)</Label>
+                      <DateInput
                         value={formData.residency_expiry_date}
-                        onChange={(e) => setFormData({...formData, residency_expiry_date: e.target.value})}
+                        onChange={(value) => setFormData({...formData, residency_expiry_date: value})}
+                        name="residency_expiry_date"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="hire_date">تاريخ التوظيف</Label>
-                      <Input
-                        id="hire_date"
-                        type="date"
+                      <Label htmlFor="hire_date">تاريخ التوظيف (dd/mm/yyyy)</Label>
+                      <DateInput
                         value={formData.hire_date}
-                        onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
+                        onChange={(value) => setFormData({...formData, hire_date: value})}
+                        name="hire_date"
                       />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Label htmlFor="add-is_active">حالة الموظف</Label>
+                      <Switch
+                        id="add-is_active"
+                        checked={formData.is_active}
+                        onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {formData.is_active ? "نشط" : "غير نشط"}
+                      </span>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-4">
@@ -727,6 +782,7 @@ export default function Employees() {
                         </div>
                       </TableHead>
                       <TableHead>حالة الإقامة</TableHead>
+                      <TableHead>حالة الموظف</TableHead>
                       <TableHead>الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -774,7 +830,7 @@ export default function Employees() {
                           {employee.birth_date ? (
                             <div className="flex items-center space-x-2">
                               <Calendar className="h-4 w-4 text-muted-foreground" />
-                              <span>{new Date(employee.birth_date).toLocaleDateString('en-GB')}</span>
+                              <span>{formatDateForDisplay(employee.birth_date)}</span>
                             </div>
                           ) : (
                             <span className="text-muted-foreground">غير محدد</span>
@@ -784,7 +840,7 @@ export default function Employees() {
                           {employee.hire_date ? (
                             <div className="flex items-center space-x-2">
                               <Calendar className="h-4 w-4 text-muted-foreground" />
-                              <span>{new Date(employee.hire_date).toLocaleDateString('en-GB')}</span>
+                              <span>{formatDateForDisplay(employee.hire_date)}</span>
                             </div>
                           ) : (
                             <span className="text-muted-foreground">غير محدد</span>
@@ -795,7 +851,7 @@ export default function Employees() {
                             <div className="flex items-center space-x-2">
                               <Calendar className="h-4 w-4 text-muted-foreground" />
                               <span className={`${new Date(employee.residency_expiry_date) < new Date() ? 'text-red-500' : new Date(employee.residency_expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) ? 'text-orange-500' : 'text-green-600'}`}>
-                                {new Date(employee.residency_expiry_date).toLocaleDateString('en-GB')}
+                                {formatDateForDisplay(employee.residency_expiry_date)}
                               </span>
                             </div>
                           ) : (
@@ -804,6 +860,14 @@ export default function Employees() {
                         </TableCell>
                         <TableCell>
                           {getResidencyStatusBadge(calculateResidencyStatus(employee.residency_expiry_date))}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={employee.is_active !== false ? "default" : "destructive"}
+                            className={employee.is_active !== false ? "bg-blue-500 hover:bg-blue-600" : "bg-red-500 hover:bg-red-600"}
+                          >
+                            {employee.is_active !== false ? "نشط" : "غير نشط"}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -928,12 +992,11 @@ export default function Employees() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-birth_date">تاريخ الميلاد</Label>
-                <Input
-                  id="edit-birth_date"
-                  type="date"
+                <Label htmlFor="edit-birth_date">تاريخ الميلاد (dd/mm/yyyy)</Label>
+                <DateInput
                   value={formData.birth_date}
-                  onChange={(e) => setFormData({...formData, birth_date: e.target.value})}
+                  onChange={(value) => setFormData({...formData, birth_date: value})}
+                  name="edit-birth_date"
                 />
               </div>
               <div>
@@ -945,22 +1008,31 @@ export default function Employees() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-residency_expiry_date">تاريخ انتهاء الإقامة</Label>
-                <Input
-                  id="edit-residency_expiry_date"
-                  type="date"
+                <Label htmlFor="edit-residency_expiry_date">تاريخ انتهاء الإقامة (dd/mm/yyyy)</Label>
+                <DateInput
                   value={formData.residency_expiry_date}
-                  onChange={(e) => setFormData({...formData, residency_expiry_date: e.target.value})}
+                  onChange={(value) => setFormData({...formData, residency_expiry_date: value})}
+                  name="edit-residency_expiry_date"
                 />
               </div>
               <div>
-                <Label htmlFor="edit-hire_date">تاريخ التوظيف</Label>
-                <Input
-                  id="edit-hire_date"
-                  type="date"
+                <Label htmlFor="edit-hire_date">تاريخ التوظيف (dd/mm/yyyy)</Label>
+                <DateInput
                   value={formData.hire_date}
-                  onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
+                  onChange={(value) => setFormData({...formData, hire_date: value})}
+                  name="edit-hire_date"
                 />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="edit-is_active">حالة الموظف</Label>
+                <Switch
+                  id="edit-is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {formData.is_active ? "نشط" : "غير نشط"}
+                </span>
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -1038,7 +1110,7 @@ export default function Employees() {
                           <div className="space-y-2">
                             <Label className="text-muted-foreground">تاريخ الميلاد</Label>
                             <p className="font-medium">
-                              {new Date(viewEmployee.birth_date).toLocaleDateString('ar-SA')}
+                              {formatDateForDisplay(viewEmployee.birth_date)}
                             </p>
                           </div>
                         )}
@@ -1066,7 +1138,7 @@ export default function Employees() {
                           <div className="space-y-2">
                             <Label className="text-muted-foreground">تاريخ التوظيف</Label>
                             <p className="font-medium">
-                              {new Date(viewEmployee.hire_date).toLocaleDateString('ar-SA')}
+                              {formatDateForDisplay(viewEmployee.hire_date)}
                             </p>
                           </div>
                         )}
@@ -1091,7 +1163,7 @@ export default function Employees() {
                             <div className="space-y-2">
                               <Label className="text-muted-foreground">تاريخ انتهاء الإقامة</Label>
                               <p className="font-medium">
-                                {new Date(viewEmployee.residency_expiry_date).toLocaleDateString('ar-SA')}
+                                {formatDateForDisplay(viewEmployee.residency_expiry_date)}
                               </p>
                             </div>
                             <div className="space-y-2">
