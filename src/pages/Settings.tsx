@@ -10,8 +10,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { jsonDatabase } from '@/lib/jsonDatabase';
+import { jsonDatabase, Employee, Document } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
+import {
+  getExpiringEmployees,
+  getExpiringDocuments,
+  sendExpiryNotification,
+  checkAndSendNotifications,
+  EmailNotificationSettings,
+  ExpiryData
+} from '@/lib/emailService';
 import { 
   Settings as SettingsIcon, 
   Mail, 
@@ -78,16 +86,25 @@ export default function Settings() {
   const [newMinistry, setNewMinistry] = useState({ name: '', name_ar: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [emailSettings, setEmailSettings] = useState<EmailSettings>({
-    smtp_server: 'smtp.gmail.com',
-    smtp_port: 587,
-    smtp_username: 'Dr.vet.waleedtam@gmail.com',
-    smtp_password: 'vsrf hfav glbr ggqh',
-    email_sender: 'dr.vet.waleedtam@gmail.com',
-    email_receiver: 'Dr.vet.waleedtam@gmail.com',
+    smtp_server: import.meta.env.VITE_SMTP_SERVER || 'smtp.gmail.com',
+    smtp_port: parseInt(import.meta.env.VITE_SMTP_PORT) || 587,
+    smtp_username: import.meta.env.VITE_SMTP_USERNAME || 'dr.vet.waleedtam@gmail.com',
+    smtp_password: import.meta.env.VITE_SMTP_PASSWORD || 'bfbc oqpk qbrb svhc',
+    email_sender: import.meta.env.VITE_EMAIL_SENDER || 'dr.vet.waleedtam@gmail.com',
+    email_receiver: import.meta.env.VITE_EMAIL_RECEIVER || 'lolotam@gmail.com',
     enable_notifications: true,
     weekly_schedule: true,
     monthly_schedule: true
   });
+
+  // Enhanced email notification state
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [expiryData, setExpiryData] = useState<ExpiryData>({ employees: [], documents: [] });
+  const [isCheckingExpiry, setIsCheckingExpiry] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [lastEmailSent, setLastEmailSent] = useState<string | null>(null);
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -102,15 +119,26 @@ export default function Settings() {
 
   const fetchData = async () => {
     try {
-      const [companiesResult, docTypesResult, ministriesResult] = await Promise.all([
+      const [companiesResult, docTypesResult, ministriesResult, employeesResult, documentsResult] = await Promise.all([
         jsonDatabase.from('companies').select('*').order('name', 'asc').execute(),
         jsonDatabase.from('document_types').select('*').order('name_ar', 'asc').execute(),
-        jsonDatabase.from('ministries').select('*').order('name_ar', 'asc').execute()
+        jsonDatabase.from('ministries').select('*').order('name_ar', 'asc').execute(),
+        jsonDatabase.from('employees').select('*').execute(),
+        jsonDatabase.from('documents').select('*').execute()
       ]);
 
       setCompanies(companiesResult.data || []);
       setDocumentTypes(docTypesResult.data || []);
       setMinistries(ministriesResult.data || []);
+      setEmployees(employeesResult.data || []);
+      setDocuments(documentsResult.data || []);
+
+      // Load last email sent timestamp
+      const lastSent = localStorage.getItem('lastEmailSent');
+      setLastEmailSent(lastSent);
+
+      // Check for expiring items
+      checkExpiringItems(employeesResult.data || [], documentsResult.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -413,40 +441,6 @@ export default function Settings() {
     }
   };
 
-  const testEmail = async () => {
-    try {
-      const { error } = await supabase.functions.invoke('send-email-notification', {
-        body: {
-          type: 'test',
-          emailSettings: emailSettings,
-          testData: {
-            documents: [
-              {
-                title: 'وثيقة اختبار',
-                document_type: 'رخصة قيادة',
-                expiry_date: '2025-02-15',
-                days_remaining: 45
-              }
-            ]
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'تم بنجاح',
-        description: 'تم إرسال ايميل الاختبار'
-      });
-    } catch (error) {
-      console.error('Error sending test email:', error);
-      toast({
-        title: 'خطأ',
-        description: 'فشل في إرسال ايميل الاختبار',
-        variant: 'destructive'
-      });
-    }
-  };
 
   const exportBackup = async () => {
     try {
@@ -501,6 +495,98 @@ export default function Settings() {
       title: 'تم الحفظ',
       description: 'تم حفظ إعدادات البريد الإلكتروني'
     });
+  };
+
+  // Check for expiring items
+  const checkExpiringItems = (employeeData: Employee[], documentData: Document[]) => {
+    const expiringEmployees = getExpiringEmployees(employeeData);
+    const expiringDocuments = getExpiringDocuments(documentData, employeeData);
+
+    setExpiryData({
+      employees: expiringEmployees,
+      documents: expiringDocuments
+    });
+  };
+
+  // Manual expiry check
+  const handleCheckExpiry = async () => {
+    setIsCheckingExpiry(true);
+    try {
+      await fetchData(); // Refresh data and check expiry
+      toast({
+        title: 'تم الفحص',
+        description: `تم العثور على ${expiryData.employees.length} إقامة و ${expiryData.documents.length} وثيقة تنتهي صلاحيتها قريباً`
+      });
+    } catch (error) {
+      console.error('Error checking expiry:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في فحص انتهاء الصلاحية',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsCheckingExpiry(false);
+    }
+  };
+
+  // Send test email with current expiry data
+  const handleSendTestEmail = async () => {
+    setIsSendingEmail(true);
+    try {
+      const notificationSettings: EmailNotificationSettings = {
+        enabled: emailSettings.enable_notifications,
+        monthlyReminder: emailSettings.monthly_schedule,
+        weeklyReminder: emailSettings.weekly_schedule,
+        expiredNotification: true,
+        emailRecipient: emailSettings.email_receiver
+      };
+
+      const result = await sendExpiryNotification(expiryData, notificationSettings);
+
+      if (result.success) {
+        const currentTime = new Date().toLocaleString('ar-EG');
+        localStorage.setItem('lastEmailSent', currentTime);
+        setLastEmailSent(currentTime);
+
+        toast({
+          title: 'تم الإرسال',
+          description: result.message
+        });
+      } else {
+        toast({
+          title: 'فشل الإرسال',
+          description: result.message,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      console.error('Error sending test email:', error);
+      toast({
+        title: 'خطأ',
+        description: `خطأ في إرسال الإيميل: ${error}`,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Test email functionality by sending a test notification
+  const testEmail = async () => {
+    await handleSendTestEmail();
+  };
+
+  // Automatic check and send notifications
+  const handleAutoNotifications = async () => {
+    const notificationSettings: EmailNotificationSettings = {
+      enabled: emailSettings.enable_notifications,
+      monthlyReminder: emailSettings.monthly_schedule,
+      weeklyReminder: emailSettings.weekly_schedule,
+      expiredNotification: true,
+      emailRecipient: emailSettings.email_receiver
+    };
+
+    await checkAndSendNotifications(employees, documents, notificationSettings);
   };
 
   if (isLoading) {
@@ -666,6 +752,219 @@ export default function Settings() {
                     <Button onClick={testEmail} variant="outline" className="flex-1">
                       اختبار الإيميل
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Expiry Monitoring & Email Scheduler */}
+              <Card className="shadow-elegant">
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Clock className="h-5 w-5" />
+                    <span>مراقبة انتهاء الصلاحية والتنبيهات التلقائية</span>
+                  </CardTitle>
+                  <CardDescription>
+                    مراقبة تلقائية لانتهاء صلاحية الإقامات والوثائق مع إرسال تنبيهات عبر البريد الإلكتروني
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Current Status */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        <span className="font-medium">إجمالي الموظفين</span>
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-2xl font-bold text-blue-600">{employees.length}</span>
+                        <p className="text-sm text-muted-foreground">موظف مسجل</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                        <span className="font-medium">إقامات تنتهي قريباً</span>
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-2xl font-bold text-orange-600">{expiryData.employees.length}</span>
+                        <p className="text-sm text-muted-foreground">خلال شهر</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <span className="font-medium">وثائق تنتهي قريباً</span>
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-2xl font-bold text-red-600">{expiryData.documents.length}</span>
+                        <p className="text-sm text-muted-foreground">خلال شهر</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Button
+                      onClick={handleCheckExpiry}
+                      disabled={isCheckingExpiry}
+                      variant="outline"
+                      className="flex items-center space-x-2"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isCheckingExpiry ? 'animate-spin' : ''}`} />
+                      <span>{isCheckingExpiry ? 'جاري الفحص...' : 'فحص انتهاء الصلاحية'}</span>
+                    </Button>
+
+                    <Button
+                      onClick={handleSendTestEmail}
+                      disabled={isSendingEmail || !emailSettings.enable_notifications}
+                      variant="default"
+                      className="flex items-center space-x-2"
+                    >
+                      <Mail className="h-4 w-4" />
+                      <span>{isSendingEmail ? 'جاري الإرسال...' : 'إرسال تقرير فوري'}</span>
+                    </Button>
+
+                    <Button
+                      onClick={handleAutoNotifications}
+                      disabled={!emailSettings.enable_notifications}
+                      variant="secondary"
+                      className="flex items-center space-x-2"
+                    >
+                      <Clock className="h-4 w-4" />
+                      <span>تشغيل التنبيهات التلقائية</span>
+                    </Button>
+                  </div>
+
+                  {/* Last Email Sent */}
+                  {lastEmailSent && (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                          آخر إيميل تم إرساله: {lastEmailSent}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expiry Details Tables */}
+                  {(expiryData.employees.length > 0 || expiryData.documents.length > 0) && (
+                    <div className="space-y-6 pt-4 border-t">
+                      <h3 className="text-lg font-semibold">تفاصيل انتهاء الصلاحية</h3>
+
+                      {/* Expiring Employees */}
+                      {expiryData.employees.length > 0 && (
+                        <div className="space-y-3">
+                          <h4 className="font-medium text-orange-600">الإقامات التي تنتهي صلاحيتها ({expiryData.employees.length})</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/50">
+                                <tr>
+                                  <th className="text-right p-2 font-medium">اسم الموظف</th>
+                                  <th className="text-right p-2 font-medium">تاريخ انتهاء الإقامة</th>
+                                  <th className="text-right p-2 font-medium">المدة المتبقية</th>
+                                  <th className="text-right p-2 font-medium">الحالة</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {expiryData.employees.slice(0, 5).map((emp, index) => (
+                                  <tr key={emp.id} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/25'}>
+                                    <td className="p-2 font-medium">{emp.name}</td>
+                                    <td className="p-2">
+                                      {emp.residency_expiry_date ? new Date(emp.residency_expiry_date).toLocaleDateString('ar-EG') : '-'}
+                                    </td>
+                                    <td className="p-2">
+                                      {Math.abs(emp.daysUntilExpiry)} {emp.daysUntilExpiry < 0 ? 'يوم (منتهية)' : 'يوم'}
+                                    </td>
+                                    <td className="p-2">
+                                      <span className={`px-2 py-1 rounded-full text-xs ${
+                                        emp.daysUntilExpiry < 0
+                                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                          : emp.daysUntilExpiry <= 7
+                                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                      }`}>
+                                        {emp.daysUntilExpiry < 0 ? 'منتهية' : emp.daysUntilExpiry <= 7 ? 'خطر' : 'تحذير'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {expiryData.employees.length > 5 && (
+                              <p className="text-xs text-muted-foreground mt-2">
+                                وعرض {expiryData.employees.length - 5} إقامة أخرى في التقرير الكامل
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expiring Documents */}
+                      {expiryData.documents.length > 0 && (
+                        <div className="space-y-3">
+                          <h4 className="font-medium text-red-600">الوثائق التي تنتهي صلاحيتها ({expiryData.documents.length})</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/50">
+                                <tr>
+                                  <th className="text-right p-2 font-medium">اسم الوثيقة</th>
+                                  <th className="text-right p-2 font-medium">الموظف</th>
+                                  <th className="text-right p-2 font-medium">تاريخ الانتهاء</th>
+                                  <th className="text-right p-2 font-medium">المدة المتبقية</th>
+                                  <th className="text-right p-2 font-medium">الحالة</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {expiryData.documents.slice(0, 5).map((doc, index) => (
+                                  <tr key={doc.id} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/25'}>
+                                    <td className="p-2 font-medium">{doc.title}</td>
+                                    <td className="p-2">{doc.employee?.name || '-'}</td>
+                                    <td className="p-2">
+                                      {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString('ar-EG') : '-'}
+                                    </td>
+                                    <td className="p-2">
+                                      {Math.abs(doc.daysUntilExpiry)} {doc.daysUntilExpiry < 0 ? 'يوم (منتهية)' : 'يوم'}
+                                    </td>
+                                    <td className="p-2">
+                                      <span className={`px-2 py-1 rounded-full text-xs ${
+                                        doc.daysUntilExpiry < 0
+                                          ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                          : doc.daysUntilExpiry <= 7
+                                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                      }`}>
+                                        {doc.daysUntilExpiry < 0 ? 'منتهية' : doc.daysUntilExpiry <= 7 ? 'خطر' : 'تحذير'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {expiryData.documents.length > 5 && (
+                              <p className="text-xs text-muted-foreground mt-2">
+                                وعرض {expiryData.documents.length - 5} وثيقة أخرى في التقرير الكامل
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Email Configuration Note */}
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">ملاحظة مهمة حول إعدادات البريد الإلكتروني</h4>
+                    <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                      <li>• تأكد من صحة إعدادات SMTP قبل تفعيل الإشعارات التلقائية</li>
+                      <li>• يتم إرسال التنبيهات التلقائية عند:</li>
+                      <li className="mr-4">- بقاء شهر على انتهاء الصلاحية</li>
+                      <li className="mr-4">- بقاء أسبوع على انتهاء الصلاحية</li>
+                      <li className="mr-4">- انتهاء الصلاحية فعلياً</li>
+                      <li>• يمكن إرسال تقرير فوري في أي وقت باستخدام زر "إرسال تقرير فوري"</li>
+                    </ul>
                   </div>
                 </CardContent>
               </Card>
