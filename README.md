@@ -22,6 +22,14 @@ A comprehensive bilingual (Arabic/English) web application for managing employee
 - **Ministry Configuration**: Manage government ministries and departments
 - **Document Types**: Define custom document categories
 - **Position Management**: Configure employee positions and roles
+- **Email Configuration**: Set up SMTP settings and email templates
+
+### Email Notification System
+- **Automated Notifications**: Send email alerts for document expiry and system events
+- **Custom Templates**: HTML email templates for different notification types
+- **Employee & Company Alerts**: Separate notification workflows
+- **EmailJS Integration**: Client-side email sending with fallback SMTP support
+- **Template Customization**: Editable HTML email templates with dynamic content
 
 ### Authentication & Security
 - **Secure Login**: Admin authentication system
@@ -43,6 +51,7 @@ A comprehensive bilingual (Arabic/English) web application for managing employee
 - **Routing**: React Router DOM
 - **State Management**: React Query (TanStack Query)
 - **Database**: Browser localStorage with JSON structure
+- **Email Service**: EmailJS & Nodemailer for notifications
 - **Icons**: Lucide React
 - **Animations**: Framer Motion
 
@@ -119,7 +128,10 @@ src/
 ├── hooks/              # Custom React hooks
 │   └── useAuth.tsx     # Authentication logic
 ├── lib/                # Utility libraries
-│   └── jsonDatabase.ts # localStorage database implementation
+│   ├── jsonDatabase.ts # localStorage database implementation
+│   └── emailService.ts # Email notification service
+├── email-template-employee.html  # Employee notification template
+├── email-template-company.html   # Company notification template
 └── App.tsx             # Main application component
 ```
 
@@ -159,6 +171,17 @@ Create a `.env` file for custom configuration:
 ```
 VITE_APP_NAME=ROMANI Management System
 VITE_DB_KEY=romani_json_database
+
+# EmailJS Configuration (optional)
+VITE_EMAILJS_SERVICE_ID=your_service_id
+VITE_EMAILJS_TEMPLATE_ID=your_template_id
+VITE_EMAILJS_PUBLIC_KEY=your_public_key
+
+# SMTP Configuration (optional - for server-side email)
+VITE_SMTP_HOST=smtp.gmail.com
+VITE_SMTP_PORT=587
+VITE_SMTP_USER=your_email@gmail.com
+VITE_SMTP_PASS=your_app_password
 ```
 
 ### Database Initialization
@@ -235,11 +258,21 @@ This project is proprietary software developed for ROMANI organization.
 
 ## 🔄 Version History
 
+- **v1.1.0**: Email notification system
+  - EmailJS integration for client-side emails
+  - Custom HTML email templates
+  - SMTP fallback configuration
+  - Automated document expiry notifications
+
 - **v1.0.0**: Initial release with core functionality
-- Employee and document management
-- Bilingual interface support
-- localStorage database implementation
-- Authentication system
+  - Employee and document management
+  - Bilingual interface support
+  - localStorage database implementation
+  - Authentication system
+
+## 📦 Dependencies
+
+See [DEPENDENCIES.md](./DEPENDENCIES.md) for a complete list of all production and development dependencies, including version requirements and configuration details.
 
 ---
 
