@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  romani-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: romani-management-system
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - NODE_ENV=production
+      - VITE_APP_NAME=ROMANI Management System
+      - VITE_DB_KEY=romani_json_database
+    volumes:
+      # Optional: Mount SSL certificates for HTTPS
+      # - ./ssl:/etc/nginx/ssl:ro
+      # Optional: Mount custom nginx config
+      # - ./custom-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.docker.compose.project=romani-management"
+      - "description=ROMANI Employee and Document Management System"
+
+  # Optional: Database backup service (if needed for future database integration)
+  # backup:
+  #   image: alpine:latest
+  #   container_name: romani-backup
+  #   volumes:
+  #     - ./backups:/backups
+  #   command: |
+  #     sh -c "
+  #     while true; do
+  #       echo 'Backup service running...'
+  #       sleep 86400
+  #     done
+  #     "
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - romani-app
+
+networks:
+  default:
+    name: romani-network
+    driver: bridge
+
+# Optional: Volumes for persistent data
+# volumes:
+#   romani-data:
+#     driver: local

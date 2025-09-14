@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Data Export</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Data Export Tool</h1>
+    <div id="status">Loading...</div>
+    <div id="results"></div>
+    
+    <script>
+        const SUPABASE_URL = "https://xwgdkbulehhtrjjoglkb.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3Z2RrYnVsZWhodHJqam9nbGtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYyNzc4MjQsImV4cCI6MjA3MTg1MzgyNH0.VdsvEqbWwOmkfRhau2u6S5wVwgK9V1dV1wVrl6s34wY";
+
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function exportAllData() {
+            try {
+                const status = document.getElementById('status');
+                const results = document.getElementById('results');
+                
+                status.textContent = 'Starting export...';
+                
+                const exportData = {
+                    companies: [],
+                    ministries: [],
+                    document_types: [],
+                    positions: [
+                        { id: 'position_1', name: 'مدير', name_ar: 'مدير', value: 'مدير' },
+                        { id: 'position_2', name: 'مندوب طبي', name_ar: 'مندوب طبي', value: 'مندوب طبي' },
+                        { id: 'position_3', name: 'مندوب شؤون', name_ar: 'مندوب شؤون', value: 'مندوب شؤون' },
+                        { id: 'position_4', name: 'سائق', name_ar: 'سائق', value: 'سائق' },
+                        { id: 'position_5', name: 'محاسب', name_ar: 'محاسب', value: 'محاسب' },
+                        { id: 'position_6', name: 'سكرتير', name_ar: 'سكرتير', value: 'سكرتير' }
+                    ],
+                    employees: [],
+                    documents: [],
+                    admin_users: [],
+                    metadata: {
+                        exportDate: new Date().toISOString(),
+                        version: '1.0.0',
+                        source: 'supabase-migration'
+                    }
+                };
+
+                // Export companies
+                status.textContent = 'Exporting companies...';
+                const { data: companies, error: companiesError } = await supabaseClient
+                    .from('companies')
+                    .select('*')
+                    .order('created_at');
+                
+                if (companiesError) throw companiesError;
+                exportData.companies = companies || [];
+
+                // Export ministries
+                status.textContent = 'Exporting ministries...';
+                const { data: ministries, error: ministriesError } = await supabaseClient
+                    .from('ministries')
+                    .select('*')
+                    .order('created_at');
+                
+                if (ministriesError) throw ministriesError;
+                exportData.ministries = ministries || [];
+
+                // Export document types
+                status.textContent = 'Exporting document types...';
+                const { data: documentTypes, error: documentTypesError } = await supabaseClient
+                    .from('document_types')
+                    .select('*')
+                    .order('created_at');
+                
+                if (documentTypesError) throw documentTypesError;
+                exportData.document_types = documentTypes || [];
+
+                // Export employees
+                status.textContent = 'Exporting employees...';
+                const { data: employees, error: employeesError } = await supabaseClient
+                    .from('employees')
+                    .select(`
+                        *,
+                        companies (
+                            id,
+                            name,
+                            name_ar,
+                            description
+                        )
+                    `)
+                    .order('created_at');
+                
+                if (employeesError) throw employeesError;
+                exportData.employees = employees || [];
+
+                // Export documents
+                status.textContent = 'Exporting documents...';
+                const { data: documents, error: documentsError } = await supabaseClient
+                    .from('documents')
+                    .select(`
+                        *,
+                        companies (
+                            id,
+                            name,
+                            name_ar,
+                            description
+                        ),
+                        employees (
+                            id,
+                            name,
+                            email,
+                            companies (
+                                id,
+                                name,
+                                name_ar
+                            )
+                        ),
+                        document_types (
+                            id,
+                            name,
+                            name_ar
+                        ),
+                        ministries (
+                            id,
+                            name,
+                            name_ar
+                        )
+                    `)
+                    .order('created_at');
+                
+                if (documentsError) throw documentsError;
+                exportData.documents = documents || [];
+
+                // Export admin users
+                status.textContent = 'Exporting admin users...';
+                const { data: adminUsers, error: adminUsersError } = await supabaseClient
+                    .from('admin_users')
+                    .select('id, username, created_at')
+                    .order('created_at');
+                
+                if (adminUsersError) throw adminUsersError;
+                exportData.admin_users = adminUsers || [];
+
+                status.textContent = 'Export completed successfully!';
+                
+                // Display results
+                results.innerHTML = `
+                    <h2>Export Summary</h2>
+                    <ul>
+                        <li>Companies: ${exportData.companies.length}</li>
+                        <li>Employees: ${exportData.employees.length}</li>
+                        <li>Documents: ${exportData.documents.length}</li>
+                        <li>Document Types: ${exportData.document_types.length}</li>
+                        <li>Ministries: ${exportData.ministries.length}</li>
+                        <li>Admin Users: ${exportData.admin_users.length}</li>
+                        <li>Positions: ${exportData.positions.length}</li>
+                    </ul>
+                    <h3>Download Export Data</h3>
+                    <button onclick="downloadExport()">Download JSON</button>
+                    <textarea id="exportJson" style="width: 100%; height: 400px; margin-top: 20px;">${JSON.stringify(exportData, null, 2)}</textarea>
+                `;
+
+                window.exportData = exportData;
+                
+            } catch (error) {
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+                console.error('Export error:', error);
+            }
+        }
+
+        function downloadExport() {
+            const data = JSON.stringify(window.exportData, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'supabase-export.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Start export when page loads
+        window.addEventListener('load', exportAllData);
+    </script>
+</body>
+</html>
