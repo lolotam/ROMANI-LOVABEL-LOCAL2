@@ -4,6 +4,7 @@ import { Upload, File, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from './button';
 import { Progress } from './progress';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface UploadedFile {
   file: File;
@@ -30,6 +31,7 @@ export function UploadDropzone({
   className,
   disabled = false
 }: UploadDropzoneProps) {
+  const { t } = useLanguage();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
@@ -70,7 +72,7 @@ export function UploadDropzone({
               ...file,
               progress: 100,
               status: Math.random() > 0.1 ? 'success' : 'error', // 90% success rate
-              error: Math.random() > 0.1 ? undefined : 'فشل في رفع الملف'
+              error: Math.random() > 0.1 ? undefined : t('documents.upload.uploadFailed')
             };
           }
           
@@ -136,16 +138,16 @@ export function UploadDropzone({
           </div>
           <div className="pointer-events-none">
             <p className="text-lg font-medium">
-              {isDragActive ? "اسقط الملفات هنا..." : "اسحب وافلت الملفات هنا"}
+              {isDragActive ? t('documents.upload.dragAndDropActive') : t('documents.upload.dragAndDrop')}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              أو انقر للاختيار من جهازك
+              {t('documents.upload.clickToSelect')}
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              الحد الأقصى: {maxFiles} ملفات، {formatFileSize(maxFileSize)} لكل ملف
+              {t('documents.upload.maxFiles', { count: maxFiles, size: formatFileSize(maxFileSize) })}
             </p>
             <p className="text-xs text-muted-foreground">
-              الأنواع المدعومة: {acceptedFileTypes.join(', ')}
+              {t('documents.upload.supportedTypes', { types: acceptedFileTypes.join(', ') })}
             </p>
           </div>
         </div>
@@ -155,14 +157,14 @@ export function UploadDropzone({
       {uploadedFiles.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium">الملفات المرفوعة ({uploadedFiles.length})</h4>
+            <h4 className="text-sm font-medium">{t('documents.upload.uploadedFiles', { count: uploadedFiles.length })}</h4>
             <Button
               variant="outline"
               size="sm"
               onClick={clearAll}
               className="h-8"
             >
-              مسح الكل
+              {t('documents.upload.clearAll')}
             </Button>
           </div>
           
@@ -203,7 +205,7 @@ export function UploadDropzone({
                     <span>{formatFileSize(uploadedFile.file.size)}</span>
                     <span>
                       {uploadedFile.status === 'uploading' && `${Math.round(uploadedFile.progress)}%`}
-                      {uploadedFile.status === 'success' && 'تم الرفع'}
+                      {uploadedFile.status === 'success' && t('documents.upload.uploadComplete')}
                       {uploadedFile.status === 'error' && uploadedFile.error}
                     </span>
                   </div>

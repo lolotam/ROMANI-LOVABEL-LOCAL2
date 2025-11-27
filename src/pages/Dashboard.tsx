@@ -3,19 +3,27 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { jsonDatabase } from '@/lib/jsonDatabase';
-import { 
-  FileText, 
-  Users, 
-  Building2, 
-  AlertTriangle, 
-  TrendingUp, 
+import {
+  FileText,
+  Users,
+  Building2,
+  AlertTriangle,
+  TrendingUp,
   Calendar,
   Plus,
   Download,
-  Settings
+  Settings,
+  Clock,
+  User,
+  Trash2,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Layout } from '@/components/Layout';
 
 interface DashboardStats {
@@ -26,6 +34,26 @@ interface DashboardStats {
   expiredDocuments: number;
 }
 
+interface RecentActivity {
+  id: string;
+  type: 'employee_added' | 'document_added' | 'document_updated';
+  description: string;
+  date: string;
+  user: string;
+}
+
+interface ExpiringItem {
+  id: string;
+  title: string;
+  type: 'employee' | 'company';
+  entityName: string;
+  expiryDate: string;
+  daysLeft: number;
+  status: 'expired' | 'critical' | 'warning';
+  isPinned?: boolean;
+  isDeleted?: boolean;
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     totalDocuments: 0,
@@ -34,17 +62,86 @@ export default function Dashboard() {
     expiringDocuments: 0,
     expiredDocuments: 0
   });
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [expiringItems, setExpiringItems] = useState<ExpiringItem[]>([]);
+  const [pinnedItems, setPinnedItems] = useState<string[]>([]);
+  const [deletedItems, setDeletedItems] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { logout } = useAuth();
+  const { toast } = useToast();
+  const { t, language, isRTL } = useLanguage();
+
+  // Force refresh function to clear all cache
+  const forceRefresh = () => {
+    setIsLoading(true);
+    // Clear any localStorage cache
+    localStorage.clear();
+    // Force page reload
+    window.location.reload();
+  };
+
+  // Pin/Unpin reminder item
+  const togglePinItem = (itemId: string) => {
+    setPinnedItems(prev => {
+      const newPinned = prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId];
+
+      // Save to localStorage for persistence
+      localStorage.setItem('pinnedReminders', JSON.stringify(newPinned));
+      return newPinned;
+    });
+  };
+
+  // Delete reminder item
+  const deleteReminderItem = (itemId: string) => {
+    if (confirm(t('dashboard.reminders.actions.confirmDelete'))) {
+      setDeletedItems(prev => {
+        const newDeleted = [...prev, itemId];
+        // Save to localStorage for persistence
+        localStorage.setItem('deletedReminders', JSON.stringify(newDeleted));
+        return newDeleted;
+      });
+
+      toast({
+        title: t('common.success'),
+        description: t('dashboard.reminders.deleteSuccess')
+      });
+    }
+  };
+
+  // Load pinned and deleted items from localStorage on mount
+  useEffect(() => {
+    const savedPinned = localStorage.getItem('pinnedReminders');
+    const savedDeleted = localStorage.getItem('deletedReminders');
+
+    if (savedPinned) {
+      setPinnedItems(JSON.parse(savedPinned));
+    }
+    if (savedDeleted) {
+      setDeletedItems(JSON.parse(savedDeleted));
+    }
+  }, []);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Fetch all documents to calculate stats
+        // Force refresh by adding timestamp to avoid caching
+        const timestamp = Date.now();
+        console.log('🔄 Fetching fresh data at:', new Date().toISOString());
+
+        // Fetch all documents to calculate stats with cache busting
         const { data: documents } = await jsonDatabase
           .from('documents')
           .select('*')
           .execute();
+
+        // DEBUG: Log actual document count from database
+        console.log('🔍 DEBUG - Documents from database:', documents);
+        console.log('📊 DEBUG - Document count:', documents?.length || 0);
+
+        // Force zero if documents is empty or undefined
+        const actualDocumentCount = Array.isArray(documents) ? documents.length : 0;
 
         // Fetch total employees
         const { data: employees } = await jsonDatabase
@@ -58,11 +155,44 @@ export default function Dashboard() {
           .select('*')
           .execute();
 
-        const documentsCount = documents?.length || 0;
+        const documentsCount = actualDocumentCount;
         const employeesCount = employees?.length || 0;
         const companiesCount = companies?.length || 0;
-        const expiringCount = documents?.filter(doc => doc.status === 'expiring_soon').length || 0;
-        const expiredCount = documents?.filter(doc => doc.status === 'expired').length || 0;
+
+        // DEBUG: Log all counts for verification
+        console.log('📈 DEBUG - Final counts:', {
+          documents: documentsCount,
+          employees: employeesCount,
+          companies: companiesCount
+        });
+
+        // Force display refresh by clearing any cached data
+        if (documentsCount === 0) {
+          console.log('✅ DEBUG - Correctly showing 0 documents');
+        } else {
+          console.error('❌ DEBUG - Still showing documents when database is empty!');
+        }
+
+        // Calculate expiring and expired documents based on actual expiry dates
+        let expiringCount = 0;
+        let expiredCount = 0;
+
+        if (documents && documents.length > 0) {
+          const today = new Date();
+          documents.forEach(doc => {
+            if (doc.expiry_date) {
+              const expiryDate = new Date(doc.expiry_date);
+              const diffTime = expiryDate.getTime() - today.getTime();
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+              if (diffDays < 0) {
+                expiredCount++;
+              } else if (diffDays <= 30) {
+                expiringCount++;
+              }
+            }
+          });
+        }
 
         setStats({
           totalDocuments: documentsCount,
@@ -71,6 +201,132 @@ export default function Dashboard() {
           expiringDocuments: expiringCount,
           expiredDocuments: expiredCount
         });
+
+        // Generate recent activities only if there are actual data
+        const activities: RecentActivity[] = [];
+
+        // Add real recent employees (only if they exist)
+        if (employees && employees.length > 0) {
+          const recentEmployees = employees
+            .filter(emp => emp.created_at)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 2);
+
+          recentEmployees.forEach(emp => {
+            activities.push({
+              id: `emp_${emp.id}`,
+              type: 'employee_added',
+              description: t('dashboard.recentActivities.employeeAdded', { name: emp.name }),
+              date: emp.created_at,
+              user: t('dashboard.recentActivities.admin')
+            });
+          });
+        }
+
+        // Add real recent documents (only if they exist)
+        if (documents && documents.length > 0) {
+          const recentDocuments = documents
+            .filter(doc => doc.created_at)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 3);
+
+          recentDocuments.forEach(doc => {
+            activities.push({
+              id: `doc_${doc.id}`,
+              type: 'document_added',
+              description: t('dashboard.recentActivities.documentAdded', { title: doc.title }),
+              date: doc.created_at,
+              user: t('dashboard.recentActivities.admin')
+            });
+          });
+        }
+
+        // Sort activities by date (most recent first)
+        activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        setRecentActivities(activities.slice(0, 5)); // Keep only 5 most recent
+
+        // Get expiring items
+        const expiringItemsData: ExpiringItem[] = [];
+
+        // Check employee residency expiry
+        employees?.forEach(employee => {
+          if (employee.residency_expiry_date) {
+            const today = new Date();
+            const expiry = new Date(employee.residency_expiry_date);
+            const diffTime = expiry.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 30) {
+              expiringItemsData.push({
+                id: employee.id,
+                title: t('dashboard.reminders.types.residency'),
+                type: 'employee',
+                entityName: employee.name,
+                expiryDate: employee.residency_expiry_date,
+                daysLeft: diffDays,
+                status: diffDays < 0 ? 'expired' : diffDays <= 7 ? 'critical' : 'warning'
+              });
+            }
+          }
+
+          // Check driving license expiry
+          if (employee.driving_license && employee.driving_license_expiry_date) {
+            const today = new Date();
+            const expiry = new Date(employee.driving_license_expiry_date);
+            const diffTime = expiry.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 30) {
+              expiringItemsData.push({
+                id: `${employee.id}_license`,
+                title: t('dashboard.reminders.types.drivingLicense'),
+                type: 'employee',
+                entityName: employee.name,
+                expiryDate: employee.driving_license_expiry_date,
+                daysLeft: diffDays,
+                status: diffDays < 0 ? 'expired' : diffDays <= 7 ? 'critical' : 'warning'
+              });
+            }
+          }
+        });
+
+        // Check document expiry
+        documents?.forEach(doc => {
+          if (doc.expiry_date) {
+            const today = new Date();
+            const expiry = new Date(doc.expiry_date);
+            const diffTime = expiry.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 30) {
+              // Find the actual employee or company name
+              let entityName = t('common.notSpecified');
+              if (doc.employee_id) {
+                const employee = employees?.find(emp => emp.id === doc.employee_id);
+                entityName = employee?.name || t('common.unknown');
+              } else if (doc.company_id) {
+                const company = companies?.find(comp => comp.id === doc.company_id);
+                entityName = company?.name || t('common.unknown');
+              }
+
+              expiringItemsData.push({
+                id: doc.id,
+                title: doc.title,
+                type: doc.employee_id ? 'employee' : 'company',
+                entityName: entityName,
+                expiryDate: doc.expiry_date,
+                daysLeft: diffDays,
+                status: diffDays < 0 ? 'expired' : diffDays <= 7 ? 'critical' : 'warning'
+              });
+            }
+          }
+        });
+
+        // Sort by most urgent first
+        expiringItemsData.sort((a, b) => a.daysLeft - b.daysLeft);
+        setExpiringItems(expiringItemsData);
+
       } catch (error) {
         console.error('Error fetching stats:', error);
       } finally {
@@ -79,40 +335,36 @@ export default function Dashboard() {
     };
 
     fetchStats();
-  }, []);
+  }, [t]);
 
   const statCards = [
     {
-      title: 'إجمالي الوثائق',
+      title: t('dashboard.stats.totalDocuments'),
       value: stats.totalDocuments,
       icon: FileText,
       gradient: 'bg-gradient-primary',
-      change: '+12%',
-      changeType: 'positive' as const
+      description: t('dashboard.stats.description.totalDocuments')
     },
     {
-      title: 'إجمالي الموظفين',
+      title: t('dashboard.stats.totalEmployees'),
       value: stats.totalEmployees,
       icon: Users,
       gradient: 'bg-gradient-medical',
-      change: '+5%',
-      changeType: 'positive' as const
+      description: t('dashboard.stats.description.totalEmployees')
     },
     {
-      title: 'الشركات',
+      title: t('dashboard.stats.totalCompanies'),
       value: stats.totalCompanies,
       icon: Building2,
       gradient: 'bg-gradient-corporate',
-      change: '0%',
-      changeType: 'neutral' as const
+      description: t('dashboard.stats.description.totalCompanies')
     },
     {
-      title: 'وثائق منتهية الصلاحية',
+      title: t('dashboard.stats.expiredDocuments'),
       value: stats.expiredDocuments,
       icon: AlertTriangle,
       gradient: 'bg-destructive',
-      change: '-8%',
-      changeType: 'negative' as const
+      description: t('dashboard.stats.description.expiredDocuments')
     }
   ];
 
@@ -145,10 +397,10 @@ export default function Dashboard() {
   };
 
   const quickActions = [
-    { title: 'إضافة وثيقة جديدة', icon: Plus, href: '/documents', action: () => window.location.href = '/documents' },
-    { title: 'إضافة موظف', icon: Users, href: '/employees', action: () => window.location.href = '/employees' },
-    { title: 'تصدير البيانات', icon: Download, href: '#', action: exportAllData },
-    { title: 'الإعدادات', icon: Settings, href: '/settings', action: () => window.location.href = '/settings' }
+    { titleKey: 'dashboard.quickActions.addDocument', icon: Plus, href: '/documents', action: () => window.location.href = '/documents' },
+    { titleKey: 'dashboard.quickActions.addEmployee', icon: Users, href: '/employees', action: () => window.location.href = '/employees' },
+    { titleKey: 'dashboard.quickActions.exportData', icon: Download, href: '#', action: exportAllData },
+    { titleKey: 'dashboard.quickActions.settings', icon: Settings, href: '/settings', action: () => window.location.href = '/settings' }
   ];
 
   if (isLoading) {
@@ -167,10 +419,10 @@ export default function Dashboard() {
         {/* Header */}
         <div className="text-center">
           <h1 className="text-2xl font-display font-bold text-foreground">
-            Romani CureMed
+            {t('header.title')}
           </h1>
           <p className="text-muted-foreground">
-            لوحة التحكم الرئيسية
+            {t('dashboard.subtitle')}
           </p>
           {/* CureMed Logo */}
           <div className="mt-4 mb-6">
@@ -190,10 +442,10 @@ export default function Dashboard() {
           className="mb-8"
         >
           <h2 className="text-3xl font-bold text-foreground mb-2">
-            مرحباً بك، المدير
+            {t('dashboard.welcome.title')}
           </h2>
           <p className="text-muted-foreground">
-            إليك نظرة عامة على النظام اليوم، {new Date().toLocaleDateString('en-CA')}
+            {t('dashboard.welcome.date', { date: new Date().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-CA') })}
           </p>
         </motion.div>
 
@@ -201,7 +453,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
             <motion.div
-              key={stat.title}
+              key={index}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
@@ -216,23 +468,54 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-foreground">
-                    {stat.value.toLocaleString('ar-SA')}
+                    {stat.value.toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US')}
                   </div>
-                  <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                    <Badge 
-                      variant={stat.changeType === 'positive' ? 'default' : 
-                               stat.changeType === 'negative' ? 'destructive' : 'secondary'}
-                      className="text-xs"
-                    >
-                      {stat.change}
-                    </Badge>
-                    <span>من الشهر الماضي</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stat.description}
+                  </p>
                 </CardContent>
               </Card>
             </motion.div>
           ))}
         </div>
+
+        {/* Debug Section - Force Refresh */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mb-4"
+        >
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-blue-800">
+                    {t('dashboard.debug.title')}
+                  </h4>
+                  <p className="text-xs text-blue-600">
+                    {t('dashboard.debug.description')}
+                  </p>
+                </div>
+                <Button
+                  onClick={forceRefresh}
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                >
+                  {t('dashboard.debug.forceRefresh')}
+                </Button>
+              </div>
+              <div className="mt-2 text-xs text-blue-600">
+                {t('dashboard.debug.currentCounts', {
+                  documents: stats.totalDocuments,
+                  employees: stats.totalEmployees,
+                  companies: stats.totalCompanies
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Alerts Section */}
         {(stats.expiringDocuments > 0 || stats.expiredDocuments > 0) && (
@@ -246,19 +529,19 @@ export default function Dashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-warning">
                   <AlertTriangle className="h-5 w-5" />
-                  <span>تنبيهات مهمة</span>
+                  <span>{t('dashboard.alerts.title')}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {stats.expiredDocuments > 0 && (
                     <p className="text-destructive">
-                      • {stats.expiredDocuments} وثيقة منتهية الصلاحية تحتاج لتجديد فوري
+                      {t('dashboard.alerts.expiredMessage', { count: stats.expiredDocuments })}
                     </p>
                   )}
                   {stats.expiringDocuments > 0 && (
                     <p className="text-warning">
-                      • {stats.expiringDocuments} وثيقة ستنتهي صلاحيتها خلال 30 يوماً
+                      {t('dashboard.alerts.expiringMessage', { count: stats.expiringDocuments })}
                     </p>
                   )}
                 </div>
@@ -275,12 +558,12 @@ export default function Dashboard() {
           className="mb-8"
         >
           <h3 className="text-xl font-semibold text-foreground mb-4">
-            الإجراءات السريعة
+            {t('dashboard.quickActions.title')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {quickActions.map((action, index) => (
-              <Card 
-                key={action.title}
+              <Card
+                key={index}
                 className="cursor-pointer shadow-soft hover:shadow-elegant transition-all duration-300 transform hover:scale-105 hover:bg-accent/50"
                 onClick={action.action}
               >
@@ -289,7 +572,7 @@ export default function Dashboard() {
                     <action.icon className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{action.title}</p>
+                    <p className="font-medium text-foreground">{t(action.titleKey)}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -297,31 +580,187 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Recent Activity placeholder */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <Card className="shadow-elegant">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="h-5 w-5" />
-                <span>النشاطات الأخيرة</span>
-              </CardTitle>
-              <CardDescription>
-                آخر العمليات المنجزة في النظام
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>لا توجد نشاطات حديثة</p>
-                <p className="text-sm">سيتم عرض آخر النشاطات هنا عند توفرها</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        {/* Recent Activities and Reminders Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Activities */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+          >
+            <Card className="shadow-elegant">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Calendar className="h-5 w-5" />
+                  <span>{t('dashboard.recentActivities.title')}</span>
+                </CardTitle>
+                <CardDescription>
+                  {t('dashboard.recentActivities.description')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {recentActivities.length > 0 ? (
+                  <div className="space-y-4">
+                    {recentActivities.map((activity) => (
+                      <div key={activity.id} className="flex items-start space-x-3 p-3 bg-muted/30 rounded-lg">
+                        <div className="p-2 bg-primary/10 rounded-full">
+                          {activity.type === 'employee_added' ? (
+                            <User className="h-4 w-4 text-primary" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{activity.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(activity.date).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-CA')} - {activity.user}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>{t('dashboard.recentActivities.noActivities')}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Reminders */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+          >
+            <Card className="shadow-elegant">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Clock className="h-5 w-5" />
+                  <span>{t('dashboard.reminders.title')}</span>
+                </CardTitle>
+                <CardDescription>
+                  {t('dashboard.reminders.description')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  // Filter out deleted items and sort by pinned status
+                  const filteredItems = expiringItems
+                    .filter(item => !deletedItems.includes(item.id))
+                    .map(item => ({
+                      ...item,
+                      isPinned: pinnedItems.includes(item.id)
+                    }))
+                    .sort((a, b) => {
+                      // Pinned items first, then by urgency
+                      if (a.isPinned && !b.isPinned) return -1;
+                      if (!a.isPinned && b.isPinned) return 1;
+                      return a.daysLeft - b.daysLeft;
+                    });
+
+                  return filteredItems.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-right w-12"></TableHead>
+                            <TableHead className="text-right">{t('dashboard.reminders.table.type')}</TableHead>
+                            <TableHead className="text-right">{t('dashboard.reminders.table.name')}</TableHead>
+                            <TableHead className="text-right">{t('dashboard.reminders.table.expiryDate')}</TableHead>
+                            <TableHead className="text-right">{t('dashboard.reminders.table.status')}</TableHead>
+                            <TableHead className="text-right w-20">{t('dashboard.reminders.table.actions')}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredItems.slice(0, 5).map((item) => (
+                            <TableRow key={item.id} className={item.isPinned ? 'bg-blue-50/50' : ''}>
+                              <TableCell>
+                                {item.isPinned && (
+                                  <Pin className="h-4 w-4 text-blue-600" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">{item.title}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  {item.type === 'employee' ? (
+                                    <User className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                  <span>{item.entityName}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {new Date(item.expiryDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-CA')}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  className={
+                                    item.status === 'expired'
+                                      ? 'bg-red-500 text-white'
+                                      : item.status === 'critical'
+                                        ? 'bg-orange-500 text-white'
+                                        : 'bg-yellow-500 text-white'
+                                  }
+                                >
+                                  {item.daysLeft < 0
+                                    ? t('dashboard.reminders.status.expired')
+                                    : item.daysLeft === 0
+                                      ? t('dashboard.reminders.status.expiringToday')
+                                      : t('dashboard.reminders.status.daysLeft', { days: Math.abs(item.daysLeft) })}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => togglePinItem(item.id)}
+                                    title={item.isPinned ? t('dashboard.reminders.actions.unpin') : t('dashboard.reminders.actions.pin')}
+                                  >
+                                    {item.isPinned ? (
+                                      <PinOff className="h-3 w-3 text-blue-600" />
+                                    ) : (
+                                      <Pin className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                                    onClick={() => deleteReminderItem(item.id)}
+                                    title={t('dashboard.reminders.actions.delete')}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {filteredItems.length > 5 && (
+                        <p className="text-xs text-muted-foreground mt-2 text-center">
+                          {t('dashboard.reminders.moreItems', { count: filteredItems.length - 5 })}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>{t('dashboard.reminders.noReminders')}</p>
+                      <p className="text-sm">{t('dashboard.reminders.allDocumentsValid')}</p>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
     </Layout>
   );

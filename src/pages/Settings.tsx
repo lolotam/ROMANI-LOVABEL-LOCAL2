@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { jsonDatabase, Employee, Document } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
 import {
@@ -20,16 +21,16 @@ import {
   EmailNotificationSettings,
   ExpiryData
 } from '@/lib/emailService';
-import { 
-  Settings as SettingsIcon, 
-  Mail, 
-  Moon, 
-  Sun, 
+import {
+  Settings as SettingsIcon,
+  Mail,
+  Moon,
+  Sun,
   Download,
   Edit,
   Pencil,
-  Upload, 
-  Database, 
+  Upload,
+  Database,
   Clock,
   Building2,
   FileText,
@@ -72,18 +73,29 @@ interface Ministry {
   name_ar: string;
 }
 
+interface Position {
+  id: string;
+  name: string;
+  name_ar: string;
+  value: string;
+}
+
 export default function Settings() {
+  const { t, language, isRTL } = useLanguage();
   const [activeTab, setActiveTab] = useState('email');
   const [darkMode, setDarkMode] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
   const [ministries, setMinistries] = useState<Ministry[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const [newCompany, setNewCompany] = useState({ name: '', name_ar: '', description: '' });
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [editingDocType, setEditingDocType] = useState<DocumentType | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<Ministry | null>(null);
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [newDocType, setNewDocType] = useState({ name: '', name_ar: '' });
   const [newMinistry, setNewMinistry] = useState({ name: '', name_ar: '' });
+  const [newPosition, setNewPosition] = useState({ name: '', name_ar: '', value: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [emailSettings, setEmailSettings] = useState<EmailSettings>({
     smtp_server: import.meta.env.VITE_SMTP_SERVER || 'smtp.gmail.com',
@@ -107,6 +119,7 @@ export default function Settings() {
 
   const { toast } = useToast();
 
+
   useEffect(() => {
     fetchData();
     // Check for dark mode preference
@@ -119,10 +132,11 @@ export default function Settings() {
 
   const fetchData = async () => {
     try {
-      const [companiesResult, docTypesResult, ministriesResult, employeesResult, documentsResult] = await Promise.all([
+      const [companiesResult, docTypesResult, ministriesResult, positionsResult, employeesResult, documentsResult] = await Promise.all([
         jsonDatabase.from('companies').select('*').order('name', 'asc').execute(),
         jsonDatabase.from('document_types').select('*').order('name_ar', 'asc').execute(),
         jsonDatabase.from('ministries').select('*').order('name_ar', 'asc').execute(),
+        jsonDatabase.from('positions').select('*').order('name_ar', 'asc').execute(),
         jsonDatabase.from('employees').select('*').execute(),
         jsonDatabase.from('documents').select('*').execute()
       ]);
@@ -130,6 +144,7 @@ export default function Settings() {
       setCompanies(companiesResult.data || []);
       setDocumentTypes(docTypesResult.data || []);
       setMinistries(ministriesResult.data || []);
+      setPositions(positionsResult.data || []);
       setEmployees(employeesResult.data || []);
       setDocuments(documentsResult.data || []);
 
@@ -150,24 +165,26 @@ export default function Settings() {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     localStorage.setItem('darkMode', newDarkMode.toString());
-    
+
     if (newDarkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
+
     toast({
-      title: 'تم التغيير',
-      description: `تم ${newDarkMode ? 'تفعيل' : 'إلغاء'} الوضع المظلم`
+      title: t('settings.settingsToasts.themeChanged'),
+      description: t('settings.settingsToasts.themeChangedDesc', {
+        status: newDarkMode ? t('settings.settingsToasts.enabled') : t('settings.settingsToasts.disabled')
+      })
     });
   };
 
   const addCompany = async () => {
     if (!newCompany.name.trim() || !newCompany.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -183,8 +200,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم إضافة الشركة الجديدة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.companyAdded')
       });
 
       setNewCompany({ name: '', name_ar: '', description: '' });
@@ -192,8 +209,8 @@ export default function Settings() {
     } catch (error) {
       console.error('Error adding company:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في إضافة الشركة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.companyAddError'),
         variant: 'destructive'
       });
     }
@@ -202,8 +219,8 @@ export default function Settings() {
   const updateCompany = async () => {
     if (!editingCompany || !editingCompany.name.trim() || !editingCompany.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -219,8 +236,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم تحديث الشركة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.companyUpdated')
       });
 
       setEditingCompany(null);
@@ -228,15 +245,15 @@ export default function Settings() {
     } catch (error) {
       console.error('Error updating company:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحديث الشركة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.companyUpdateError'),
         variant: 'destructive'
       });
     }
   };
 
   const deleteCompany = async (company: Company) => {
-    if (!confirm(`هل أنت متأكد من حذف شركة "${company.name_ar}"؟`)) return;
+    if (!confirm(t('settings.settingsToasts.companyDeleteConfirm', { name: company.name_ar }))) return;
 
     try {
       const { error } = await jsonDatabase.delete('companies', company.id);
@@ -244,16 +261,16 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم حذف الشركة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.companyDeleted')
       });
 
       fetchData();
     } catch (error) {
       console.error('Error deleting company:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في حذف الشركة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.companyDeleteError'),
         variant: 'destructive'
       });
     }
@@ -262,8 +279,8 @@ export default function Settings() {
   const addDocumentType = async () => {
     if (!newDocType.name.trim() || !newDocType.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -275,8 +292,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم إضافة نوع الوثيقة الجديد'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.documentTypeAdded')
       });
 
       setNewDocType({ name: '', name_ar: '' });
@@ -284,8 +301,8 @@ export default function Settings() {
     } catch (error) {
       console.error('Error adding document type:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في إضافة نوع الوثيقة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.documentTypeAddError'),
         variant: 'destructive'
       });
     }
@@ -294,8 +311,8 @@ export default function Settings() {
   const addMinistry = async () => {
     if (!newMinistry.name.trim() || !newMinistry.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -307,8 +324,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم إضافة الوزارة الجديدة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.ministryAdded')
       });
 
       setNewMinistry({ name: '', name_ar: '' });
@@ -316,8 +333,8 @@ export default function Settings() {
     } catch (error) {
       console.error('Error adding ministry:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في إضافة الوزارة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.ministryAddError'),
         variant: 'destructive'
       });
     }
@@ -326,8 +343,8 @@ export default function Settings() {
   const updateDocumentType = async () => {
     if (!editingDocType || !editingDocType.name.trim() || !editingDocType.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -342,8 +359,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم تحديث نوع الوثيقة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.documentTypeUpdated')
       });
 
       setEditingDocType(null);
@@ -351,15 +368,15 @@ export default function Settings() {
     } catch (error) {
       console.error('Error updating document type:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحديث نوع الوثيقة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.documentTypeUpdateError'),
         variant: 'destructive'
       });
     }
   };
 
   const deleteDocumentType = async (docType: DocumentType) => {
-    if (!confirm(`هل أنت متأكد من حذف نوع الوثيقة "${docType.name_ar}"؟`)) return;
+    if (!confirm(t('settings.settingsToasts.documentTypeDeleteConfirm', { name: docType.name_ar }))) return;
 
     try {
       const { error } = await jsonDatabase.delete('document_types', docType.id);
@@ -367,16 +384,16 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم حذف نوع الوثيقة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.documentTypeDeleted')
       });
 
       fetchData();
     } catch (error) {
       console.error('Error deleting document type:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في حذف نوع الوثيقة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.documentTypeDeleteError'),
         variant: 'destructive'
       });
     }
@@ -385,8 +402,8 @@ export default function Settings() {
   const updateMinistry = async () => {
     if (!editingMinistry || !editingMinistry.name.trim() || !editingMinistry.name_ar.trim()) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى إدخال جميع البيانات المطلوبة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
         variant: 'destructive'
       });
       return;
@@ -401,8 +418,8 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم تحديث الوزارة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.ministryUpdated')
       });
 
       setEditingMinistry(null);
@@ -410,15 +427,15 @@ export default function Settings() {
     } catch (error) {
       console.error('Error updating ministry:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحديث الوزارة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.ministryUpdateError'),
         variant: 'destructive'
       });
     }
   };
 
   const deleteMinistry = async (ministry: Ministry) => {
-    if (!confirm(`هل أنت متأكد من حذف الوزارة "${ministry.name_ar}"؟`)) return;
+    if (!confirm(t('settings.settingsToasts.ministryDeleteConfirm', { name: ministry.name_ar }))) return;
 
     try {
       const { error } = await jsonDatabase.delete('ministries', ministry.id);
@@ -426,16 +443,108 @@ export default function Settings() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم حذف الوزارة'
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.ministryDeleted')
       });
 
       fetchData();
     } catch (error) {
       console.error('Error deleting ministry:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في حذف الوزارة',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.ministryDeleteError'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const addPosition = async () => {
+    if (!newPosition.name.trim() || !newPosition.name_ar.trim() || !newPosition.value.trim()) {
+      toast({
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const { error } = await jsonDatabase.insert('positions', [newPosition]);
+
+      if (error) throw error;
+
+      toast({
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.positionAdded')
+      });
+
+      setNewPosition({ name: '', name_ar: '', value: '' });
+      fetchData();
+    } catch (error) {
+      console.error('Error adding position:', error);
+      toast({
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.positionAddError'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const updatePosition = async () => {
+    if (!editingPosition || !editingPosition.name.trim() || !editingPosition.name_ar.trim() || !editingPosition.value.trim()) {
+      toast({
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.requiredFields'),
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const { error } = await jsonDatabase.update('positions', editingPosition.id, {
+        name: editingPosition.name,
+        name_ar: editingPosition.name_ar,
+        value: editingPosition.value
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.positionUpdated')
+      });
+
+      setEditingPosition(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating position:', error);
+      toast({
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.positionUpdateError'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const deletePosition = async (position: Position) => {
+    if (!confirm(t('settings.settingsToasts.positionDeleteConfirm', { name: position.name_ar }))) return;
+
+    try {
+      const { error } = await jsonDatabase.delete('positions', position.id);
+
+      if (error) throw error;
+
+      toast({
+        title: t('settings.settingsToasts.success'),
+        description: t('settings.settingsToasts.positionDeleted')
+      });
+
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting position:', error);
+      toast({
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.positionDeleteError'),
         variant: 'destructive'
       });
     }
@@ -475,14 +584,14 @@ export default function Settings() {
       URL.revokeObjectURL(url);
 
       toast({
-        title: 'تم التصدير',
-        description: 'تم تصدير النسخة الاحتياطية بنجاح'
+        title: t('settings.settingsToasts.backupExported'),
+        description: t('settings.settingsToasts.backupExportedDesc')
       });
     } catch (error) {
       console.error('Error exporting backup:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تصدير النسخة الاحتياطية',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.backupExportError'),
         variant: 'destructive'
       });
     }
@@ -492,8 +601,8 @@ export default function Settings() {
     // Save email settings to localStorage (in production, save to database)
     localStorage.setItem('emailSettings', JSON.stringify(emailSettings));
     toast({
-      title: 'تم الحفظ',
-      description: 'تم حفظ إعدادات البريد الإلكتروني'
+      title: t('settings.settingsToasts.success'),
+      description: t('settings.settingsToasts.emailSettingsSaved')
     });
   };
 
@@ -514,14 +623,17 @@ export default function Settings() {
     try {
       await fetchData(); // Refresh data and check expiry
       toast({
-        title: 'تم الفحص',
-        description: `تم العثور على ${expiryData.employees.length} إقامة و ${expiryData.documents.length} وثيقة تنتهي صلاحيتها قريباً`
+        title: t('settings.settingsToasts.checkCompleted'),
+        description: t('settings.settingsToasts.checkCompletedDesc', {
+          employees: expiryData.employees.length,
+          documents: expiryData.documents.length
+        })
       });
     } catch (error) {
       console.error('Error checking expiry:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في فحص انتهاء الصلاحية',
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.checkError'),
         variant: 'destructive'
       });
     } finally {
@@ -549,12 +661,12 @@ export default function Settings() {
         setLastEmailSent(currentTime);
 
         toast({
-          title: 'تم الإرسال',
+          title: t('settings.settingsToasts.emailSent'),
           description: result.message
         });
       } else {
         toast({
-          title: 'فشل الإرسال',
+          title: t('settings.settingsToasts.emailSendError'),
           description: result.message,
           variant: 'destructive'
         });
@@ -562,8 +674,8 @@ export default function Settings() {
     } catch (error) {
       console.error('Error sending test email:', error);
       toast({
-        title: 'خطأ',
-        description: `خطأ في إرسال الإيميل: ${error}`,
+        title: t('settings.settingsToasts.error'),
+        description: t('settings.settingsToasts.emailError', { error }),
         variant: 'destructive'
       });
     } finally {
@@ -609,9 +721,9 @@ export default function Settings() {
           className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
         >
           <div>
-            <h1 className="text-3xl font-bold text-gradient">الإعدادات</h1>
+            <h1 className="text-3xl font-bold text-gradient">{t('settings.title')}</h1>
             <p className="text-muted-foreground">
-              إدارة إعدادات النظام والتكوينات العامة
+              {t('settings.subtitle')}
             </p>
           </div>
         </motion.div>
@@ -623,30 +735,34 @@ export default function Settings() {
           transition={{ delay: 0.1 }}
         >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6">
+            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-7">
               <TabsTrigger value="email" className="flex items-center space-x-2">
                 <Mail className="h-4 w-4" />
-                <span>البريد</span>
+                <span>{t('settings.tabs.email')}</span>
               </TabsTrigger>
               <TabsTrigger value="appearance" className="flex items-center space-x-2">
                 <Moon className="h-4 w-4" />
-                <span>المظهر</span>
+                <span>{t('settings.tabs.appearance')}</span>
               </TabsTrigger>
               <TabsTrigger value="companies" className="flex items-center space-x-2">
                 <Building2 className="h-4 w-4" />
-                <span>الشركات</span>
+                <span>{t('settings.tabs.companies')}</span>
+              </TabsTrigger>
+              <TabsTrigger value="positions" className="flex items-center space-x-2">
+                <UserCog className="h-4 w-4" />
+                <span>{t('settings.tabs.positions')}</span>
               </TabsTrigger>
               <TabsTrigger value="documents" className="flex items-center space-x-2">
                 <FileText className="h-4 w-4" />
-                <span>أنواع الوثائق</span>
+                <span>{t('settings.tabs.documents')}</span>
               </TabsTrigger>
               <TabsTrigger value="ministries" className="flex items-center space-x-2">
                 <Shield className="h-4 w-4" />
-                <span>الوزارات</span>
+                <span>{t('settings.tabs.ministries')}</span>
               </TabsTrigger>
               <TabsTrigger value="backup" className="flex items-center space-x-2">
                 <Database className="h-4 w-4" />
-                <span>النسخ الاحتياطي</span>
+                <span>{t('settings.tabs.backup')}</span>
               </TabsTrigger>
             </TabsList>
 
@@ -656,101 +772,101 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Mail className="h-5 w-5" />
-                    <span>إعدادات البريد الإلكتروني</span>
+                    <span>{t('settings.email.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    تكوين خادم البريد الإلكتروني والإشعارات التلقائية
+                    {t('settings.email.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="smtp_server">خادم SMTP</Label>
+                      <Label htmlFor="smtp_server">{t('settings.email.smtpServer')}</Label>
                       <Input
                         id="smtp_server"
                         value={emailSettings.smtp_server}
-                        onChange={(e) => setEmailSettings({...emailSettings, smtp_server: e.target.value})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, smtp_server: e.target.value })}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="smtp_port">منفذ SMTP</Label>
+                      <Label htmlFor="smtp_port">{t('settings.email.smtpPort')}</Label>
                       <Input
                         id="smtp_port"
                         type="number"
                         value={emailSettings.smtp_port}
-                        onChange={(e) => setEmailSettings({...emailSettings, smtp_port: parseInt(e.target.value)})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, smtp_port: parseInt(e.target.value) })}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="smtp_username">اسم المستخدم</Label>
+                      <Label htmlFor="smtp_username">{t('settings.email.smtpUsername')}</Label>
                       <Input
                         id="smtp_username"
                         value={emailSettings.smtp_username}
-                        onChange={(e) => setEmailSettings({...emailSettings, smtp_username: e.target.value})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, smtp_username: e.target.value })}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="smtp_password">كلمة المرور</Label>
+                      <Label htmlFor="smtp_password">{t('settings.email.smtpPassword')}</Label>
                       <Input
                         id="smtp_password"
                         type="password"
                         value={emailSettings.smtp_password}
-                        onChange={(e) => setEmailSettings({...emailSettings, smtp_password: e.target.value})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, smtp_password: e.target.value })}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email_sender">المرسل</Label>
+                      <Label htmlFor="email_sender">{t('settings.email.emailSender')}</Label>
                       <Input
                         id="email_sender"
                         type="email"
                         value={emailSettings.email_sender}
-                        onChange={(e) => setEmailSettings({...emailSettings, email_sender: e.target.value})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, email_sender: e.target.value })}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email_receiver">المستقبل</Label>
+                      <Label htmlFor="email_receiver">{t('settings.email.emailReceiver')}</Label>
                       <Input
                         id="email_receiver"
                         type="email"
                         value={emailSettings.email_receiver}
-                        onChange={(e) => setEmailSettings({...emailSettings, email_receiver: e.target.value})}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, email_receiver: e.target.value })}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-4 pt-4 border-t">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="enable_notifications">تفعيل الإشعارات</Label>
+                      <Label htmlFor="enable_notifications">{t('settings.email.enableNotifications')}</Label>
                       <Switch
                         id="enable_notifications"
                         checked={emailSettings.enable_notifications}
-                        onCheckedChange={(checked) => setEmailSettings({...emailSettings, enable_notifications: checked})}
+                        onCheckedChange={(checked) => setEmailSettings({ ...emailSettings, enable_notifications: checked })}
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="weekly_schedule">تذكير أسبوعي</Label>
+                      <Label htmlFor="weekly_schedule">{t('settings.email.weeklySchedule')}</Label>
                       <Switch
                         id="weekly_schedule"
                         checked={emailSettings.weekly_schedule}
-                        onCheckedChange={(checked) => setEmailSettings({...emailSettings, weekly_schedule: checked})}
+                        onCheckedChange={(checked) => setEmailSettings({ ...emailSettings, weekly_schedule: checked })}
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="monthly_schedule">تذكير شهري</Label>
+                      <Label htmlFor="monthly_schedule">{t('settings.email.monthlySchedule')}</Label>
                       <Switch
                         id="monthly_schedule"
                         checked={emailSettings.monthly_schedule}
-                        onCheckedChange={(checked) => setEmailSettings({...emailSettings, monthly_schedule: checked})}
+                        onCheckedChange={(checked) => setEmailSettings({ ...emailSettings, monthly_schedule: checked })}
                       />
                     </div>
                   </div>
 
                   <div className="flex gap-2">
                     <Button onClick={saveEmailSettings} className="flex-1">
-                      حفظ إعدادات البريد الإلكتروني
+                      {t('settings.email.saveEmailSettings')}
                     </Button>
                     <Button onClick={testEmail} variant="outline" className="flex-1">
-                      اختبار الإيميل
+                      {t('settings.email.testEmailButton')}
                     </Button>
                   </div>
                 </CardContent>
@@ -761,10 +877,10 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Clock className="h-5 w-5" />
-                    <span>مراقبة انتهاء الصلاحية والتنبيهات التلقائية</span>
+                    <span>{t('settings.email.monitoringTitle')}</span>
                   </CardTitle>
                   <CardDescription>
-                    مراقبة تلقائية لانتهاء صلاحية الإقامات والوثائق مع إرسال تنبيهات عبر البريد الإلكتروني
+                    {t('settings.email.monitoringDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -773,33 +889,33 @@ export default function Settings() {
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        <span className="font-medium">إجمالي الموظفين</span>
+                        <span className="font-medium">{t('settings.email.totalEmployees')}</span>
                       </div>
                       <div className="mt-2">
                         <span className="text-2xl font-bold text-blue-600">{employees.length}</span>
-                        <p className="text-sm text-muted-foreground">موظف مسجل</p>
+                        <p className="text-sm text-muted-foreground">{t('settings.email.registeredEmployee')}</p>
                       </div>
                     </div>
 
                     <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                        <span className="font-medium">إقامات تنتهي قريباً</span>
+                        <span className="font-medium">{t('settings.email.expiringResidencies')}</span>
                       </div>
                       <div className="mt-2">
                         <span className="text-2xl font-bold text-orange-600">{expiryData.employees.length}</span>
-                        <p className="text-sm text-muted-foreground">خلال شهر</p>
+                        <p className="text-sm text-muted-foreground">{t('settings.email.withinMonth')}</p>
                       </div>
                     </div>
 
                     <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                        <span className="font-medium">وثائق تنتهي قريباً</span>
+                        <span className="font-medium">{t('settings.email.expiringDocuments')}</span>
                       </div>
                       <div className="mt-2">
                         <span className="text-2xl font-bold text-red-600">{expiryData.documents.length}</span>
-                        <p className="text-sm text-muted-foreground">خلال شهر</p>
+                        <p className="text-sm text-muted-foreground">{t('settings.email.withinMonth')}</p>
                       </div>
                     </div>
                   </div>
@@ -813,7 +929,7 @@ export default function Settings() {
                       className="flex items-center space-x-2"
                     >
                       <RefreshCw className={`h-4 w-4 ${isCheckingExpiry ? 'animate-spin' : ''}`} />
-                      <span>{isCheckingExpiry ? 'جاري الفحص...' : 'فحص انتهاء الصلاحية'}</span>
+                      <span>{isCheckingExpiry ? t('settings.email.checkingExpiry') : t('settings.email.checkExpiry')}</span>
                     </Button>
 
                     <Button
@@ -823,7 +939,7 @@ export default function Settings() {
                       className="flex items-center space-x-2"
                     >
                       <Mail className="h-4 w-4" />
-                      <span>{isSendingEmail ? 'جاري الإرسال...' : 'إرسال تقرير فوري'}</span>
+                      <span>{isSendingEmail ? t('settings.email.sendingReport') : t('settings.email.sendImmediateReport')}</span>
                     </Button>
 
                     <Button
@@ -833,7 +949,7 @@ export default function Settings() {
                       className="flex items-center space-x-2"
                     >
                       <Clock className="h-4 w-4" />
-                      <span>تشغيل التنبيهات التلقائية</span>
+                      <span>{t('settings.email.enableAutoAlerts')}</span>
                     </Button>
                   </div>
 
@@ -843,7 +959,7 @@ export default function Settings() {
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                         <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                          آخر إيميل تم إرساله: {lastEmailSent}
+                          {t('settings.email.lastEmailSent')} {lastEmailSent}
                         </span>
                       </div>
                     </div>
@@ -852,20 +968,20 @@ export default function Settings() {
                   {/* Expiry Details Tables */}
                   {(expiryData.employees.length > 0 || expiryData.documents.length > 0) && (
                     <div className="space-y-6 pt-4 border-t">
-                      <h3 className="text-lg font-semibold">تفاصيل انتهاء الصلاحية</h3>
+                      <h3 className="text-lg font-semibold">{t('settings.email.expiryDetails')}</h3>
 
                       {/* Expiring Employees */}
                       {expiryData.employees.length > 0 && (
                         <div className="space-y-3">
-                          <h4 className="font-medium text-orange-600">الإقامات التي تنتهي صلاحيتها ({expiryData.employees.length})</h4>
+                          <h4 className="font-medium text-orange-600">{t('settings.email.expiringResidenciesList')} ({expiryData.employees.length})</h4>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                               <thead className="bg-muted/50">
                                 <tr>
-                                  <th className="text-right p-2 font-medium">اسم الموظف</th>
-                                  <th className="text-right p-2 font-medium">تاريخ انتهاء الإقامة</th>
-                                  <th className="text-right p-2 font-medium">المدة المتبقية</th>
-                                  <th className="text-right p-2 font-medium">الحالة</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.employeeName')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.residencyExpiryDate')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.timeRemaining')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.status')}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -876,17 +992,16 @@ export default function Settings() {
                                       {emp.residency_expiry_date ? new Date(emp.residency_expiry_date).toLocaleDateString('ar-EG') : '-'}
                                     </td>
                                     <td className="p-2">
-                                      {Math.abs(emp.daysUntilExpiry)} {emp.daysUntilExpiry < 0 ? 'يوم (منتهية)' : 'يوم'}
+                                      {Math.abs(emp.daysUntilExpiry)} {emp.daysUntilExpiry < 0 ? t('settings.email.dayExpired') : t('settings.email.day')}
                                     </td>
                                     <td className="p-2">
-                                      <span className={`px-2 py-1 rounded-full text-xs ${
-                                        emp.daysUntilExpiry < 0
+                                      <span className={`px-2 py-1 rounded-full text-xs ${emp.daysUntilExpiry < 0
                                           ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                                           : emp.daysUntilExpiry <= 7
-                                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
-                                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                      }`}>
-                                        {emp.daysUntilExpiry < 0 ? 'منتهية' : emp.daysUntilExpiry <= 7 ? 'خطر' : 'تحذير'}
+                                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                        }`}>
+                                        {emp.daysUntilExpiry < 0 ? t('settings.email.expired') : emp.daysUntilExpiry <= 7 ? t('settings.email.danger') : t('settings.email.warning')}
                                       </span>
                                     </td>
                                   </tr>
@@ -895,7 +1010,7 @@ export default function Settings() {
                             </table>
                             {expiryData.employees.length > 5 && (
                               <p className="text-xs text-muted-foreground mt-2">
-                                وعرض {expiryData.employees.length - 5} إقامة أخرى في التقرير الكامل
+                                {t('settings.email.moreItemsInReport', { count: expiryData.employees.length - 5 })}
                               </p>
                             )}
                           </div>
@@ -905,16 +1020,16 @@ export default function Settings() {
                       {/* Expiring Documents */}
                       {expiryData.documents.length > 0 && (
                         <div className="space-y-3">
-                          <h4 className="font-medium text-red-600">الوثائق التي تنتهي صلاحيتها ({expiryData.documents.length})</h4>
+                          <h4 className="font-medium text-red-600">{t('settings.email.expiringDocumentsList')} ({expiryData.documents.length})</h4>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                               <thead className="bg-muted/50">
                                 <tr>
-                                  <th className="text-right p-2 font-medium">اسم الوثيقة</th>
-                                  <th className="text-right p-2 font-medium">الموظف</th>
-                                  <th className="text-right p-2 font-medium">تاريخ الانتهاء</th>
-                                  <th className="text-right p-2 font-medium">المدة المتبقية</th>
-                                  <th className="text-right p-2 font-medium">الحالة</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.documentName')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.employee')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.expiryDate')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.timeRemaining')}</th>
+                                  <th className="text-right p-2 font-medium">{t('settings.email.status')}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -926,17 +1041,16 @@ export default function Settings() {
                                       {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString('ar-EG') : '-'}
                                     </td>
                                     <td className="p-2">
-                                      {Math.abs(doc.daysUntilExpiry)} {doc.daysUntilExpiry < 0 ? 'يوم (منتهية)' : 'يوم'}
+                                      {Math.abs(doc.daysUntilExpiry)} {doc.daysUntilExpiry < 0 ? t('settings.email.dayExpired') : t('settings.email.day')}
                                     </td>
                                     <td className="p-2">
-                                      <span className={`px-2 py-1 rounded-full text-xs ${
-                                        doc.daysUntilExpiry < 0
+                                      <span className={`px-2 py-1 rounded-full text-xs ${doc.daysUntilExpiry < 0
                                           ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                                           : doc.daysUntilExpiry <= 7
-                                          ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
-                                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                      }`}>
-                                        {doc.daysUntilExpiry < 0 ? 'منتهية' : doc.daysUntilExpiry <= 7 ? 'خطر' : 'تحذير'}
+                                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+                                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                        }`}>
+                                        {doc.daysUntilExpiry < 0 ? t('settings.email.expired') : doc.daysUntilExpiry <= 7 ? t('settings.email.danger') : t('settings.email.warning')}
                                       </span>
                                     </td>
                                   </tr>
@@ -945,7 +1059,7 @@ export default function Settings() {
                             </table>
                             {expiryData.documents.length > 5 && (
                               <p className="text-xs text-muted-foreground mt-2">
-                                وعرض {expiryData.documents.length - 5} وثيقة أخرى في التقرير الكامل
+                                {t('settings.email.moreDocumentsInReport', { count: expiryData.documents.length - 5 })}
                               </p>
                             )}
                           </div>
@@ -956,14 +1070,14 @@ export default function Settings() {
 
                   {/* Email Configuration Note */}
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">ملاحظة مهمة حول إعدادات البريد الإلكتروني</h4>
+                    <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">{t('settings.email.emailConfigNote')}</h4>
                     <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                      <li>• تأكد من صحة إعدادات SMTP قبل تفعيل الإشعارات التلقائية</li>
-                      <li>• يتم إرسال التنبيهات التلقائية عند:</li>
-                      <li className="mr-4">- بقاء شهر على انتهاء الصلاحية</li>
-                      <li className="mr-4">- بقاء أسبوع على انتهاء الصلاحية</li>
-                      <li className="mr-4">- انتهاء الصلاحية فعلياً</li>
-                      <li>• يمكن إرسال تقرير فوري في أي وقت باستخدام زر "إرسال تقرير فوري"</li>
+                      <li>{t('settings.email.emailConfigNotes.verifySmtp')}</li>
+                      <li>{t('settings.email.emailConfigNotes.autoAlertsWhen')}</li>
+                      <li className="mr-4">{t('settings.email.emailConfigNotes.monthBeforeExpiry')}</li>
+                      <li className="mr-4">{t('settings.email.emailConfigNotes.weekBeforeExpiry')}</li>
+                      <li className="mr-4">{t('settings.email.emailConfigNotes.actualExpiry')}</li>
+                      <li>{t('settings.email.emailConfigNotes.immediateReport')}</li>
                     </ul>
                   </div>
                 </CardContent>
@@ -976,18 +1090,18 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                    <span>إعدادات المظهر</span>
+                    <span>{t('settings.appearance.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    تخصيص مظهر النظام والثيم المفضل
+                    {t('settings.appearance.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="dark-mode">الوضع المظلم</Label>
+                      <Label htmlFor="dark-mode">{t('settings.appearance.darkMode')}</Label>
                       <p className="text-sm text-muted-foreground">
-                        تفعيل أو إلغاء تفعيل الوضع المظلم
+                        {t('settings.appearance.darkModeDescription')}
                       </p>
                     </div>
                     <Switch
@@ -1006,50 +1120,50 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Building2 className="h-5 w-5" />
-                    <span>إدارة الشركات</span>
+                    <span>{t('settings.companies.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    إضافة وإدارة الشركات في النظام
+                    {t('settings.companies.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label htmlFor="company_name_ar">الاسم بالعربية</Label>
+                      <Label htmlFor="company_name_ar">{t('settings.companies.nameArabic')}</Label>
                       <Input
                         id="company_name_ar"
                         value={newCompany.name_ar}
-                        onChange={(e) => setNewCompany({...newCompany, name_ar: e.target.value})}
-                        placeholder="أدخل اسم الشركة بالعربية"
+                        onChange={(e) => setNewCompany({ ...newCompany, name_ar: e.target.value })}
+                        placeholder={t('settings.companies.nameArabicPlaceholder')}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="company_name_en">الاسم بالإنجليزية</Label>
+                      <Label htmlFor="company_name_en">{t('settings.companies.nameEnglish')}</Label>
                       <Input
                         id="company_name_en"
                         value={newCompany.name}
-                        onChange={(e) => setNewCompany({...newCompany, name: e.target.value})}
-                        placeholder="Enter company name in English"
+                        onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                        placeholder={t('settings.companies.nameEnglishPlaceholder')}
                       />
                     </div>
                     <div className="flex items-end">
                       <Button onClick={addCompany} className="w-full">
-                        إضافة شركة
+                        {t('settings.companies.addNew')}
                       </Button>
                     </div>
                   </div>
                   <div>
-                    <Label htmlFor="company_description">الوصف (اختياري)</Label>
+                    <Label htmlFor="company_description">{t('settings.companies.description')}</Label>
                     <Textarea
                       id="company_description"
                       value={newCompany.description}
-                      onChange={(e) => setNewCompany({...newCompany, description: e.target.value})}
-                      placeholder="أدخل وصف الشركة"
+                      onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })}
+                      placeholder={t('settings.companies.descriptionPlaceholder')}
                     />
                   </div>
 
                   <div className="pt-4 border-t">
-                    <h3 className="font-semibold mb-3">الشركات الحالية ({companies.length})</h3>
+                    <h3 className="font-semibold mb-3">{t('settings.companies.currentCompaniesCount', { count: companies.length })}</h3>
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {companies.map((company) => (
                         <div key={company.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -1058,17 +1172,98 @@ export default function Settings() {
                             <p className="text-sm text-muted-foreground">{company.name}</p>
                           </div>
                           <div className="flex space-x-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => setEditingCompany(company)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => deleteCompany(company)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Positions Management */}
+            <TabsContent value="positions" className="space-y-6">
+              <Card className="shadow-elegant">
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <UserCog className="h-5 w-5" />
+                    <span>{t('settings.positions.title')}</span>
+                  </CardTitle>
+                  <CardDescription>
+                    {t('settings.positions.description')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="position_name_ar">{t('settings.positions.nameArabic')}</Label>
+                      <Input
+                        id="position_name_ar"
+                        value={newPosition.name_ar}
+                        onChange={(e) => setNewPosition({ ...newPosition, name_ar: e.target.value })}
+                        placeholder={t('settings.positions.nameArabicPlaceholder')}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="position_name_en">{t('settings.positions.nameEnglish')}</Label>
+                      <Input
+                        id="position_name_en"
+                        value={newPosition.name}
+                        onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })}
+                        placeholder={t('settings.positions.nameEnglishPlaceholder')}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="position_value">{t('settings.positions.value')}</Label>
+                      <Input
+                        id="position_value"
+                        value={newPosition.value}
+                        onChange={(e) => setNewPosition({ ...newPosition, value: e.target.value })}
+                        placeholder={t('settings.positions.valuePlaceholder')}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={addPosition} className="w-full">
+                        {t('settings.positions.addNew')}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <h3 className="font-semibold mb-3">{t('settings.positions.currentPositionsCount', { count: positions.length })}</h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {positions.map((position) => (
+                        <div key={position.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                          <div className="flex-1">
+                            <p className="font-medium">{position.name_ar}</p>
+                            <p className="text-sm text-muted-foreground">{position.name} ({position.value})</p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditingPosition(position)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => deletePosition(position)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -1087,41 +1282,41 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <FileText className="h-5 w-5" />
-                    <span>إدارة أنواع الوثائق</span>
+                    <span>{t('settings.documentTypes.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    إضافة وإدارة أنواع الوثائق المختلفة
+                    {t('settings.documentTypes.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label htmlFor="doc_name_en">الاسم بالإنجليزية</Label>
+                      <Label htmlFor="doc_name_en">{t('settings.documentTypes.nameEnglish')}</Label>
                       <Input
                         id="doc_name_en"
                         value={newDocType.name}
-                        onChange={(e) => setNewDocType({...newDocType, name: e.target.value})}
-                        placeholder="Document Type"
+                        onChange={(e) => setNewDocType({ ...newDocType, name: e.target.value })}
+                        placeholder={t('settings.documentTypes.nameEnglishPlaceholder')}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="doc_name_ar">الاسم بالعربية</Label>
+                      <Label htmlFor="doc_name_ar">{t('settings.documentTypes.nameArabic')}</Label>
                       <Input
                         id="doc_name_ar"
                         value={newDocType.name_ar}
-                        onChange={(e) => setNewDocType({...newDocType, name_ar: e.target.value})}
-                        placeholder="نوع الوثيقة"
+                        onChange={(e) => setNewDocType({ ...newDocType, name_ar: e.target.value })}
+                        placeholder={t('settings.documentTypes.nameArabicPlaceholder')}
                       />
                     </div>
                     <div className="flex items-end">
                       <Button onClick={addDocumentType} className="w-full">
-                        إضافة نوع وثيقة
+                        {t('settings.documentTypes.addNew')}
                       </Button>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t">
-                    <h3 className="font-semibold mb-3">أنواع الوثائق الحالية ({documentTypes.length})</h3>
+                    <h3 className="font-semibold mb-3">{t('settings.documentTypes.currentTypesCount', { count: documentTypes.length })}</h3>
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {documentTypes.map((docType) => (
                         <div key={docType.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -1130,15 +1325,15 @@ export default function Settings() {
                             <p className="text-sm text-muted-foreground">{docType.name}</p>
                           </div>
                           <div className="flex space-x-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => setEditingDocType(docType)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => deleteDocumentType(docType)}
                             >
@@ -1159,41 +1354,41 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Shield className="h-5 w-5" />
-                    <span>إدارة الوزارات</span>
+                    <span>{t('settings.ministries.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    إضافة وإدارة الوزارات والجهات الحكومية
+                    {t('settings.ministries.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label htmlFor="ministry_name_en">الاسم بالإنجليزية</Label>
+                      <Label htmlFor="ministry_name_en">{t('settings.ministries.nameEnglish')}</Label>
                       <Input
                         id="ministry_name_en"
                         value={newMinistry.name}
-                        onChange={(e) => setNewMinistry({...newMinistry, name: e.target.value})}
-                        placeholder="Ministry Name"
+                        onChange={(e) => setNewMinistry({ ...newMinistry, name: e.target.value })}
+                        placeholder={t('settings.ministries.nameEnglishPlaceholder')}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="ministry_name_ar">الاسم بالعربية</Label>
+                      <Label htmlFor="ministry_name_ar">{t('settings.ministries.nameArabic')}</Label>
                       <Input
                         id="ministry_name_ar"
                         value={newMinistry.name_ar}
-                        onChange={(e) => setNewMinistry({...newMinistry, name_ar: e.target.value})}
-                        placeholder="اسم الوزارة"
+                        onChange={(e) => setNewMinistry({ ...newMinistry, name_ar: e.target.value })}
+                        placeholder={t('settings.ministries.nameArabicPlaceholder')}
                       />
                     </div>
                     <div className="flex items-end">
                       <Button onClick={addMinistry} className="w-full">
-                        إضافة وزارة
+                        {t('settings.ministries.addNew')}
                       </Button>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t">
-                    <h3 className="font-semibold mb-3">الوزارات الحالية ({ministries.length})</h3>
+                    <h3 className="font-semibold mb-3">{t('settings.ministries.currentMinistriesCount', { count: ministries.length })}</h3>
                     <div className="space-y-2 max-h-60 overflow-y-auto">
                       {ministries.map((ministry) => (
                         <div key={ministry.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -1202,15 +1397,15 @@ export default function Settings() {
                             <p className="text-sm text-muted-foreground">{ministry.name}</p>
                           </div>
                           <div className="flex space-x-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => setEditingMinistry(ministry)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => deleteMinistry(ministry)}
                             >
@@ -1231,54 +1426,54 @@ export default function Settings() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <Database className="h-5 w-5" />
-                    <span>النسخ الاحتياطي واستعادة البيانات</span>
+                    <span>{t('settings.backup.title')}</span>
                   </CardTitle>
                   <CardDescription>
-                    إنشاء نسخ احتياطية واستعادة البيانات
+                    {t('settings.backup.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">النسخ الاحتياطي</h3>
+                      <h3 className="text-lg font-semibold">{t('settings.backup.backupSection')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        تصدير جميع بيانات النظام إلى ملف JSON
+                        {t('settings.backup.backupDescription')}
                       </p>
                       <Button onClick={exportBackup} className="w-full">
                         <Download className="h-4 w-4 ml-2" />
-                        تصدير نسخة احتياطية
+                        {t('settings.backup.exportBackup')}
                       </Button>
                     </div>
-                    
+
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">استعادة البيانات</h3>
+                      <h3 className="text-lg font-semibold">{t('settings.backup.restoreSection')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        استيراد البيانات من ملف نسخة احتياطية
+                        {t('settings.backup.restoreDescription')}
                       </p>
                       <div className="space-y-2">
                         <Input type="file" accept=".json" />
                         <Button className="w-full" variant="outline">
                           <Upload className="h-4 w-4 ml-2" />
-                          استيراد نسخة احتياطية
+                          {t('settings.backup.importBackup')}
                         </Button>
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-4 border-t">
-                    <h3 className="text-lg font-semibold mb-3">النسخ التلقائية</h3>
+                    <h3 className="text-lg font-semibold mb-3">{t('settings.backup.automaticBackups')}</h3>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                         <div>
-                          <p className="font-medium">نسخ احتياطية يومية</p>
-                          <p className="text-sm text-muted-foreground">الاحتفاظ بآخر نسختين فقط</p>
+                          <p className="font-medium">{t('settings.backup.dailyBackups')}</p>
+                          <p className="text-sm text-muted-foreground">{t('settings.backup.dailyBackupsDesc')}</p>
                         </div>
                         <Switch defaultChecked />
                       </div>
                       <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                         <div>
-                          <p className="font-medium">إشعارات النسخ الاحتياطي</p>
-                          <p className="text-sm text-muted-foreground">إرسال تأكيد عبر البريد الإلكتروني</p>
+                          <p className="font-medium">{t('settings.backup.backupNotifications')}</p>
+                          <p className="text-sm text-muted-foreground">{t('settings.backup.backupNotificationsDesc')}</p>
                         </div>
                         <Switch defaultChecked />
                       </div>
@@ -1294,8 +1489,8 @@ export default function Settings() {
         <Dialog open={!!editingCompany} onOpenChange={() => setEditingCompany(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>تعديل الشركة</DialogTitle>
-              <DialogDescription>تحديث بيانات الشركة</DialogDescription>
+              <DialogTitle>{t('settings.companies.title')}</DialogTitle>
+              <DialogDescription>{t('settings.companies.description')}</DialogDescription>
             </DialogHeader>
             {editingCompany && (
               <div className="space-y-4">
@@ -1303,25 +1498,25 @@ export default function Settings() {
                   <Label>الاسم بالعربية</Label>
                   <Input
                     value={editingCompany.name_ar}
-                    onChange={(e) => setEditingCompany({...editingCompany, name_ar: e.target.value})}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, name_ar: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label>الاسم بالإنجليزية</Label>
                   <Input
                     value={editingCompany.name}
-                    onChange={(e) => setEditingCompany({...editingCompany, name: e.target.value})}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, name: e.target.value })}
                   />
                 </div>
                 <div>
-                  <Label>الوصف</Label>
+                  <Label>{t('settings.companies.description')}</Label>
                   <Textarea
                     value={editingCompany.description || ''}
-                    onChange={(e) => setEditingCompany({...editingCompany, description: e.target.value})}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, description: e.target.value })}
                   />
                 </div>
                 <Button onClick={updateCompany} className="w-full">
-                  حفظ التغييرات
+                  {t('settings.actions.saveChanges')}
                 </Button>
               </div>
             )}
@@ -1332,27 +1527,27 @@ export default function Settings() {
         <Dialog open={!!editingDocType} onOpenChange={() => setEditingDocType(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>تعديل نوع الوثيقة</DialogTitle>
-              <DialogDescription>تحديث بيانات نوع الوثيقة</DialogDescription>
+              <DialogTitle>{t('settings.documentTypes.editTitle')}</DialogTitle>
+              <DialogDescription>{t('settings.documentTypes.editDescription')}</DialogDescription>
             </DialogHeader>
             {editingDocType && (
               <div className="space-y-4">
                 <div>
-                  <Label>الاسم بالعربية</Label>
+                  <Label>{t('settings.documentTypes.nameArabic')}</Label>
                   <Input
                     value={editingDocType.name_ar}
-                    onChange={(e) => setEditingDocType({...editingDocType, name_ar: e.target.value})}
+                    onChange={(e) => setEditingDocType({ ...editingDocType, name_ar: e.target.value })}
                   />
                 </div>
                 <div>
-                  <Label>الاسم بالإنجليزية</Label>
+                  <Label>{t('settings.documentTypes.nameEnglish')}</Label>
                   <Input
                     value={editingDocType.name}
-                    onChange={(e) => setEditingDocType({...editingDocType, name: e.target.value})}
+                    onChange={(e) => setEditingDocType({ ...editingDocType, name: e.target.value })}
                   />
                 </div>
                 <Button onClick={updateDocumentType} className="w-full">
-                  حفظ التغييرات
+                  {t('settings.actions.saveChanges')}
                 </Button>
               </div>
             )}
@@ -1363,30 +1558,78 @@ export default function Settings() {
         <Dialog open={!!editingMinistry} onOpenChange={() => setEditingMinistry(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>تعديل الوزارة</DialogTitle>
-              <DialogDescription>تحديث بيانات الوزارة</DialogDescription>
+              <DialogTitle>{t('settings.ministries.editTitle')}</DialogTitle>
+              <DialogDescription>{t('settings.ministries.editDescription')}</DialogDescription>
             </DialogHeader>
             {editingMinistry && (
               <div className="space-y-4">
                 <div>
-                  <Label>الاسم بالعربية</Label>
+                  <Label>{t('settings.ministries.nameArabic')}</Label>
                   <Input
                     value={editingMinistry.name_ar}
-                    onChange={(e) => setEditingMinistry({...editingMinistry, name_ar: e.target.value})}
+                    onChange={(e) => setEditingMinistry({ ...editingMinistry, name_ar: e.target.value })}
                   />
                 </div>
                 <div>
-                  <Label>الاسم بالإنجليزية</Label>
+                  <Label>{t('settings.ministries.nameEnglish')}</Label>
                   <Input
                     value={editingMinistry.name}
-                    onChange={(e) => setEditingMinistry({...editingMinistry, name: e.target.value})}
+                    onChange={(e) => setEditingMinistry({ ...editingMinistry, name: e.target.value })}
                   />
                 </div>
                 <Button onClick={updateMinistry} className="w-full">
-                  حفظ التغييرات
+                  {t('settings.actions.saveChanges')}
                 </Button>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Position Dialog */}
+        <Dialog open={!!editingPosition} onOpenChange={() => setEditingPosition(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('settings.positions.editTitle')}</DialogTitle>
+              <DialogDescription>
+                {t('settings.positions.editDescription')}
+              </DialogDescription>
+            </DialogHeader>
+            {editingPosition && (
+              <div className="grid grid-cols-1 gap-4 py-4">
+                <div>
+                  <Label htmlFor="edit-position-name-ar">{t('settings.positions.nameArabic')}</Label>
+                  <Input
+                    id="edit-position-name-ar"
+                    value={editingPosition.name_ar}
+                    onChange={(e) => setEditingPosition({ ...editingPosition, name_ar: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-position-name-en">{t('settings.positions.nameEnglish')}</Label>
+                  <Input
+                    id="edit-position-name-en"
+                    value={editingPosition.name}
+                    onChange={(e) => setEditingPosition({ ...editingPosition, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-position-value">{t('settings.positions.value')}</Label>
+                  <Input
+                    id="edit-position-value"
+                    value={editingPosition.value}
+                    onChange={(e) => setEditingPosition({ ...editingPosition, value: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingPosition(null)}>
+                {t('settings.actions.cancel')}
+              </Button>
+              <Button onClick={updatePosition}>
+                {t('settings.actions.saveChanges')}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

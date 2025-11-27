@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { calculateDocumentStatus } from '@/lib/statusUtils';
 import { UploadDropzone } from '@/components/ui/UploadDropzone';
 import { DocumentForm } from '@/components/DocumentForm';
 import { FileText, Plus, Search, Download, Trash2, Eye, Edit, Upload, Calendar, Building2, ArrowLeft, Grid, List } from 'lucide-react';
@@ -448,7 +449,7 @@ export default function CompanyDocuments() {
 
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <StatusBadge status={doc.status || 'valid'} />
+          <StatusBadge status={calculateDocumentStatus(doc.expiry_date)} />
           {doc.ministries && (
             <Badge variant="outline" className="text-xs">
               {doc.ministries.name_ar}
@@ -769,7 +770,7 @@ export default function CompanyDocuments() {
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">الحالة</Label>
-                    <StatusBadge status={selectedDocument.status || 'valid'} />
+                    <StatusBadge status={calculateDocumentStatus(selectedDocument.expiry_date)} />
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">اسم الملف</Label>

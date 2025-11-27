@@ -13,11 +13,13 @@ import { useToast } from '@/hooks/use-toast';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { calculateDocumentStatus } from '@/lib/statusUtils';
 import { UploadDropzone } from '@/components/ui/UploadDropzone';
 import { DocumentForm } from '@/components/DocumentForm';
 import { FileText, Plus, Search, Filter, Download, Trash2, Eye, Edit, Upload, Calendar, Building2, User, Grid, List, MoreVertical } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { EmployeeCard } from '@/components/EmployeeCard';
+import { useLanguage } from '@/contexts/LanguageContext';
 interface Document {
   id: string;
   title: string;
@@ -86,6 +88,7 @@ interface Ministry {
   name_ar: string;
 }
 export default function Documents() {
+  const { t, language } = useLanguage();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -172,18 +175,33 @@ export default function Documents() {
   };
   const fetchEmployees = async () => {
     try {
-      const {
-        data,
-        error
-      } = await jsonDatabase.from('employees').select(`
-        *,
-        companies (
-          name,
-          name_ar
-        )
-      `).order('name', 'asc').execute();
-      if (error) throw error;
-      setEmployees(data || []);
+      const [employeesResult, documentsResult] = await Promise.all([
+        jsonDatabase.from('employees').select(`
+          *,
+          companies (
+            name,
+            name_ar
+          )
+        `).order('name', 'asc').execute(),
+        jsonDatabase.from('documents').select('*').execute()
+      ]);
+      
+      if (employeesResult.error) throw employeesResult.error;
+      if (documentsResult.error) throw documentsResult.error;
+
+      const documents = documentsResult.data || [];
+      
+      // Calculate document count for each employee
+      const employeesWithCounts = employeesResult.data?.map(employee => {
+        const documentCount = documents.filter(doc => doc.employee_id === employee.id).length;
+        
+        return {
+          ...employee,
+          document_count: documentCount
+        };
+      }) || [];
+      
+      setEmployees(employeesWithCounts);
     } catch (error) {
       console.error('Error fetching employees:', error);
     }
@@ -257,7 +275,7 @@ export default function Documents() {
     setSelectedDocuments([]);
   };
   const bulkDelete = async () => {
-    if (!confirm(`هل أنت متأكد من حذف ${selectedDocuments.length} وثيقة؟`)) return;
+    if (!confirm(t('documents.bulk.deleteConfirm', { count: selectedDocuments.length }))) return;
     try {
       // Use the JSON database bulk delete functionality
       const errors = [];
@@ -267,16 +285,16 @@ export default function Documents() {
       }
       if (errors.length > 0) throw errors[0];
       toast({
-        title: 'تم بنجاح',
-        description: `تم حذف ${selectedDocuments.length} وثيقة`
+        title: t('documents.messages.success'),
+        description: t('documents.bulk.deleteSuccess', { count: selectedDocuments.length })
       });
       setSelectedDocuments([]);
-      fetchDocuments();
+      await Promise.all([fetchDocuments(), fetchEmployees()]);
     } catch (error) {
       console.error('Error deleting documents:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في حذف الوثائق',
+        title: t('documents.messages.error'),
+        description: t('documents.bulk.deleteError'),
         variant: 'destructive'
       });
     }
@@ -297,8 +315,8 @@ export default function Documents() {
     setEditingDocument(null);
   };
   const handleDocumentSaved = async () => {
-    // Refresh documents list
-    await fetchDocuments();
+    // Refresh documents list and employees (to update document counts)
+    await Promise.all([fetchDocuments(), fetchEmployees()]);
   };
 
   const handleViewDocument = (doc: Document) => {
@@ -326,7 +344,7 @@ export default function Documents() {
         description: 'تم حذف الوثيقة بنجاح'
       });
 
-      fetchDocuments();
+      await Promise.all([fetchDocuments(), fetchEmployees()]);
     } catch (error) {
       console.error('Error deleting document:', error);
       toast({
@@ -386,8 +404,8 @@ export default function Documents() {
     } catch (error) {
       console.error('Error downloading document:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحميل الوثيقة',
+        title: t('documents.messages.error'),
+        description: t('documents.messages.downloadError'),
         variant: 'destructive'
       });
     }
@@ -416,7 +434,7 @@ export default function Documents() {
       
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <StatusBadge status={doc.status || 'valid'} />
+          <StatusBadge status={calculateDocumentStatus(doc.expiry_date)} />
           <Badge variant="outline" className="text-xs">
             {activeTab === 'company' ? doc.companies?.name : doc.employees?.name}
           </Badge>
@@ -424,7 +442,7 @@ export default function Documents() {
         
         {doc.expiry_date && <div className="flex items-center text-sm text-muted-foreground">
             <Calendar className="h-4 w-4 ml-2" />
-            <span>ينتهي: {new Date(doc.expiry_date).toLocaleDateString('en-GB')}</span>
+            <span>{t('documents.card.expiresOn')} {new Date(doc.expiry_date + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-GB')}</span>
           </div>}
         
         <div className="flex items-center justify-between pt-2 border-t">
@@ -434,7 +452,7 @@ export default function Documents() {
               size="sm" 
               className="h-8 w-8 p-0"
               onClick={() => handleViewDocument(doc)}
-              title="عرض الوثيقة"
+              title={t('documents.card.viewDocument')}
             >
               <Eye className="h-4 w-4" />
             </Button>
@@ -443,7 +461,7 @@ export default function Documents() {
               size="sm" 
               className="h-8 w-8 p-0"
               onClick={() => handleEditDocument(doc)}
-              title="تعديل الوثيقة"
+              title={t('documents.card.editDocument')}
             >
               <Edit className="h-4 w-4" />
             </Button>
@@ -452,7 +470,7 @@ export default function Documents() {
               size="sm" 
               className="h-8 w-8 p-0"
               onClick={() => handleDownloadDocument(doc)}
-              title="تحميل الوثيقة"
+              title={t('documents.card.downloadDocument')}
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -461,7 +479,7 @@ export default function Documents() {
               size="sm" 
               className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground"
               onClick={() => handleDeleteDocument(doc.id)}
-              title="حذف الوثيقة"
+              title={t('documents.card.deleteDocument')}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -495,7 +513,7 @@ export default function Documents() {
               className="flex items-center space-x-2"
             >
               <Eye className="h-4 w-4" />
-              <span>عرض جميع وثائق الشركة</span>
+              <span>{t('documents.company.viewAllCompanyDocuments')}</span>
             </Button>
           )}
         </div>
@@ -504,8 +522,8 @@ export default function Documents() {
           <Card className="p-8 text-center cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => company && navigate(`/documents/company/${company.id}`)}>
             <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-muted-foreground">لا توجد وثائق في هذا القسم</p>
-            <p className="text-xs text-muted-foreground mt-2">انقر للذهاب إلى صفحة وثائق الشركة</p>
+            <p className="text-muted-foreground">{t('documents.company.noDocumentsInSection')}</p>
+            <p className="text-xs text-muted-foreground mt-2">{t('documents.company.clickToGoToCompanyPage')}</p>
           </Card>
         ) : (
           <div className="space-y-4">
@@ -520,7 +538,7 @@ export default function Documents() {
                   variant="outline"
                   onClick={() => company && navigate(`/documents/company/${company.id}`)}
                 >
-                  عرض جميع الوثائق ({docs.length})
+                  {t('documents.company.viewAllDocuments', { count: docs.length })}
                 </Button>
               </div>
             )}
@@ -551,7 +569,7 @@ export default function Documents() {
       {sectionEmployees.length === 0 ? (
         <Card className="p-8 text-center">
           <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-          <p className="text-muted-foreground">لا يوجد موظفين في هذا القسم</p>
+          <p className="text-muted-foreground">{t('documents.employee.noEmployeesInSection')}</p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -587,9 +605,9 @@ export default function Documents() {
         y: 0
       }} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gradient text-slate-950">إدارة الوثائق</h1>
+            <h1 className="text-3xl font-bold text-gradient text-slate-950">{t('documents.title')}</h1>
             <p className="text-muted-foreground">
-              عرض وإدارة جميع الوثائق ({documents.length} وثيقة)
+              {t('documents.viewAndManage', { count: documents.length })}
             </p>
           </div>
           
@@ -598,14 +616,14 @@ export default function Documents() {
               <DialogTrigger asChild>
                 <Button className="shadow-elegant hover:shadow-glow transition-all">
                   <Upload className="h-4 w-4 ml-2" />
-                  رفع وثائق
+                  {t('documents.uploadDocuments')}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>رفع وثائق جديدة</DialogTitle>
+                  <DialogTitle>{t('documents.uploadNew')}</DialogTitle>
                   <DialogDescription>
-                    اختر الملفات التي تريد رفعها
+                    {t('documents.chooseFiles')}
                   </DialogDescription>
                 </DialogHeader>
                 <UploadDropzone onFilesAccepted={handleFilesAccepted} maxFiles={20} maxFileSize={50 * 1024 * 1024} // 50MB
@@ -629,38 +647,38 @@ export default function Documents() {
             <CardContent className="p-6">
               <div className="flex flex-col lg:flex-row gap-4">
                 <div className="flex-1">
-                  <Label htmlFor="search">البحث</Label>
+                  <Label htmlFor="search">{t('documents.search')}</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="search" placeholder="البحث في الوثائق..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                    <Input id="search" placeholder={t('documents.searchPlaceholder')} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
                   </div>
                 </div>
                 
                 <div className="w-full lg:w-48">
-                  <Label>الحالة</Label>
+                  <Label>{t('documents.status')}</Label>
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder={t('documents.status')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">جميع الحالات</SelectItem>
-                      <SelectItem value="valid">صالح</SelectItem>
-                      <SelectItem value="expiring_soon">ينتهي قريباً</SelectItem>
-                      <SelectItem value="expired">منتهي الصلاحية</SelectItem>
+                      <SelectItem value="all">{t('documents.statusOptions.all')}</SelectItem>
+                      <SelectItem value="valid">{t('documents.statusOptions.valid')}</SelectItem>
+                      <SelectItem value="expiring_soon">{t('documents.statusOptions.expiringSoon')}</SelectItem>
+                      <SelectItem value="expired">{t('documents.statusOptions.expired')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 
                 <div className="w-full lg:w-48">
-                  <Label>نوع الوثيقة</Label>
+                  <Label>{t('documents.documentType')}</Label>
                   <Select value={selectedType} onValueChange={setSelectedType}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder={t('documents.documentType')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">جميع الأنواع</SelectItem>
+                      <SelectItem value="all">{t('documents.allTypes')}</SelectItem>
                       {documentTypes.map(type => <SelectItem key={type.id} value={type.id}>
-                          {type.name_ar}
+                          {language === 'ar' ? type.name_ar : type.name}
                         </SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -694,20 +712,20 @@ export default function Documents() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
                     <span className="text-sm font-medium">
-                      تم تحديد {selectedDocuments.length} وثيقة
+                      {t('documents.bulk.selected', { count: selectedDocuments.length })}
                     </span>
                     <Button variant="ghost" size="sm" onClick={clearSelection}>
-                      إلغاء التحديد
+                      {t('documents.bulk.clearSelection')}
                     </Button>
                   </div>
                   <div className="flex space-x-2">
                     <Button variant="outline" size="sm">
                       <Download className="h-4 w-4 ml-1" />
-                      تحميل
+                      {t('documents.bulk.download')}
                     </Button>
                     <Button variant="destructive" size="sm" onClick={bulkDelete}>
                       <Trash2 className="h-4 w-4 ml-1" />
-                      حذف
+                      {t('documents.bulk.delete')}
                     </Button>
                   </div>
                 </div>
@@ -730,17 +748,17 @@ export default function Documents() {
               <TabsList className="grid w-fit grid-cols-2">
                 <TabsTrigger value="company" className="flex items-center space-x-2">
                   <Building2 className="h-4 w-4 ml-1" />
-                  <span>وثائق الشركات</span>
+                  <span>{t('documents.tabs.companyDocuments')}</span>
                 </TabsTrigger>
                 <TabsTrigger value="employee" className="flex items-center space-x-2">
                   <User className="h-4 w-4 ml-1" />
-                  <span>وثائق الموظفين</span>
+                  <span>{t('documents.tabs.employeeDocuments')}</span>
                 </TabsTrigger>
               </TabsList>
               
               <div className="flex space-x-2">
                 <Button variant="outline" size="sm" onClick={selectAllDocuments}>
-                  تحديد الكل ({filteredDocuments.length})
+                  {t('documents.bulk.selectAll', { count: filteredDocuments.length })}
                 </Button>
               </div>
             </div>
@@ -757,8 +775,8 @@ export default function Documents() {
               {companies.length === 0 && (
                 <div className="text-center py-12">
                   <Building2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">لا توجد شركات مضافة في النظام</p>
-                  <p className="text-sm text-muted-foreground mt-2">قم بإضافة شركات من صفحة الإعدادات</p>
+                  <p className="text-muted-foreground">{t('documents.empty.noCompanies')}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{t('documents.empty.noCompaniesSubtext')}</p>
                 </div>
               )}
             </TabsContent>
@@ -767,7 +785,7 @@ export default function Documents() {
               {companies.map((company) => (
                 <EmployeeSection
                   key={company.id}
-                  title={`موظفو ${company.name_ar || company.name}`}
+                  title={t('documents.company.employees', { company: company.name_ar || company.name })}
                   companyName={company.name}
                   employees={employeesByCompany[company.name] || []}
                 />
@@ -775,8 +793,8 @@ export default function Documents() {
               {companies.length === 0 && (
                 <div className="text-center py-12">
                   <User className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">لا توجد شركات مضافة في النظام</p>
-                  <p className="text-sm text-muted-foreground mt-2">قم بإضافة شركات من صفحة الإعدادات</p>
+                  <p className="text-muted-foreground">{t('documents.empty.noEmployees')}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{t('documents.empty.noEmployeesSubtext')}</p>
                 </div>
               )}
             </TabsContent>
@@ -824,7 +842,7 @@ export default function Documents() {
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">الحالة</Label>
-                    <StatusBadge status={selectedDocument.status || 'valid'} />
+                    <StatusBadge status={calculateDocumentStatus(selectedDocument.expiry_date)} />
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-muted-foreground">اسم الملف</Label>
@@ -839,7 +857,7 @@ export default function Documents() {
                   {selectedDocument.expiry_date && (
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">تاريخ انتهاء الصلاحية</Label>
-                      <p className="text-sm">{new Date(selectedDocument.expiry_date).toLocaleDateString('en-GB')}</p>
+                      <p className="text-sm">{new Date(selectedDocument.expiry_date + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-GB')}</p>
                     </div>
                   )}
                   {selectedDocument.companies && (

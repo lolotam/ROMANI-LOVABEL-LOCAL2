@@ -16,17 +16,20 @@ import { cn } from '@/lib/utils';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { calculateDocumentStatusFromDate } from '@/lib/statusUtils';
 
-const documentSchema = z.object({
-  title: z.string().min(3, 'عنوان الوثيقة يجب أن يكون 3 أحرف على الأقل').max(120, 'عنوان الوثيقة يجب ألا يزيد عن 120 حرف'),
-  beneficiary_type: z.enum(['company', 'employee'], { required_error: 'نوع المستفيد مطلوب' }),
+// Create schema factory function that accepts translation function
+const createDocumentSchema = (t: (key: string) => string) => z.object({
+  title: z.string().min(3, t('documents.form.validation.titleMinLength')).max(120, t('documents.form.validation.titleMaxLength')),
+  beneficiary_type: z.enum(['company', 'employee'], { required_error: t('documents.form.validation.beneficiaryTypeRequired') }),
   company_id: z.string().optional(),
   employee_id: z.string().optional(),
   document_type_id: z.string().optional(),
   ministry_id: z.string().optional(),
   entity_name: z.string().optional(),
   issue_date: z.date().optional(),
-  expiry_date: z.date({ required_error: 'تاريخ الانتهاء مطلوب' }),
+  expiry_date: z.date({ required_error: t('documents.form.validation.expiryDateRequired') }),
   notes: z.string().optional(),
 }).refine((data) => {
   // Company validation
@@ -39,7 +42,7 @@ const documentSchema = z.object({
   }
   return false;
 }, {
-  message: 'جميع الحقول المطلوبة يجب أن تكون مملوءة',
+  message: t('documents.form.validation.allFieldsRequired'),
 }).refine((data) => {
   // Date validation - expiry date should be >= issue date
   if (data.issue_date && data.expiry_date) {
@@ -47,7 +50,7 @@ const documentSchema = z.object({
   }
   return true;
 }, {
-  message: 'تاريخ الانتهاء يجب أن يكون بعد أو مساوي لتاريخ الإصدار',
+  message: t('documents.form.validation.invalidDateRange'),
   path: ['expiry_date']
 }).refine((data) => {
   // Entity name required when ministry is "أخرى"
@@ -56,11 +59,11 @@ const documentSchema = z.object({
   }
   return true;
 }, {
-  message: 'اسم الجهة مطلوب عند اختيار "أخرى"',
+  message: t('documents.form.validation.entityNameRequired'),
   path: ['entity_name']
 });
 
-type DocumentFormData = z.infer<typeof documentSchema>;
+type DocumentFormData = z.infer<ReturnType<typeof createDocumentSchema>>;
 
 interface DocumentFormProps {
   uploadedFile: File | null;
@@ -101,6 +104,9 @@ export function DocumentForm({
   preselectedEmployeeId,
   editingDocument,
 }: DocumentFormProps) {
+  const { t, language } = useLanguage();
+  const documentSchema = createDocumentSchema(t);
+  
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedCompany, setSelectedCompany] = React.useState<string>('');
   const [beneficiaryType, setBeneficiaryType] = React.useState<'company' | 'employee'>(
@@ -122,8 +128,8 @@ export function DocumentForm({
       employee_id: editingDocument.employee_id || '',
       document_type_id: editingDocument.document_type_id || '',
       ministry_id: editingDocument.ministry_id || '',
-      issue_date: editingDocument.issue_date ? new Date(editingDocument.issue_date) : undefined,
-      expiry_date: new Date(editingDocument.expiry_date),
+      issue_date: editingDocument.issue_date ? new Date(editingDocument.issue_date + 'T00:00:00') : undefined,
+      expiry_date: new Date(editingDocument.expiry_date + 'T00:00:00'),
       notes: editingDocument.notes || '',
     } : {
       title: fileName ? fileName.replace(/\.[^/.]+$/, '') : '', // Remove file extension
@@ -141,20 +147,11 @@ export function DocumentForm({
   // Dynamic ministries from database with "Other" option
   const dynamicMinistries = [
     ...ministries,
-    { id: 'other', name: 'أخرى', name_ar: 'أخرى' },
+    { id: 'other', name: t('documents.form.otherMinistryOption'), name_ar: t('documents.form.otherMinistryOption') },
   ];
 
-  // Calculate document status based on expiry date
-  const calculateStatus = (expiryDate: Date | undefined) => {
-    if (!expiryDate) return 'valid';
-    const now = new Date();
-    const daysDiff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (daysDiff < 0) return 'expired';
-    if (daysDiff <= 7) return 'expiring_soon';
-    if (daysDiff <= 30) return 'expiring_soon';
-    return 'valid';
-  };
+  // Use centralized status calculation
+  const calculateStatus = calculateDocumentStatusFromDate;
 
   const watchedExpiryDate = form.watch('expiry_date');
   const watchedMinistry = form.watch('ministry_id');
@@ -173,11 +170,11 @@ export function DocumentForm({
         const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
 
         if (uploadedFile.size > maxSize) {
-          throw new Error('حجم الملف يجب أن يكون أقل من 20 ميجابايت');
+          throw new Error(t('documents.messages.fileSizeError'));
         }
 
         if (!allowedTypes.includes(uploadedFile.type)) {
-          throw new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات PDF و JPG و PNG');
+          throw new Error(t('documents.messages.fileTypeError'));
         }
       }
 
@@ -198,7 +195,7 @@ export function DocumentForm({
         fileBase64 = editingDocument.file_path;
         currentFileName = editingDocument.file_name || 'document';
       } else {
-        throw new Error('لا يوجد ملف للحفظ');
+        throw new Error(t('documents.messages.noFileError'));
       }
 
       // Prepare data based on beneficiary type
@@ -238,7 +235,7 @@ export function DocumentForm({
                 created_at: new Date().toISOString()
               });
 
-            if (ministryError) throw new Error('فشل في إنشاء الوزارة الجديدة');
+            if (ministryError) throw new Error(t('documents.messages.ministryCreateError'));
             documentData.ministry_id = newMinistryId;
           }
         } else {
@@ -266,7 +263,7 @@ export function DocumentForm({
           });
 
         if (dbError) {
-          throw new Error(`فشل في تحديث بيانات الوثيقة: ${dbError}`);
+          throw new Error(`${t('documents.messages.updateError')}: ${dbError}`);
         }
       } else {
         // Create new document
@@ -284,16 +281,16 @@ export function DocumentForm({
           .insert('documents', fullDocumentData);
 
         if (dbError) {
-          throw new Error(`فشل في حفظ بيانات الوثيقة: ${dbError}`);
+          throw new Error(`${t('documents.messages.saveError')}: ${dbError}`);
         }
       }
 
-      toast.success(editingDocument ? 'تم تحديث الوثيقة بنجاح' : 'تم حفظ الوثيقة بنجاح');
+      toast.success(editingDocument ? t('documents.messages.editSuccess') : t('documents.messages.addSuccess'));
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('خطأ في حفظ الوثيقة:', error);
-      toast.error(error instanceof Error ? error.message : 'حدث خطأ غير متوقع');
+      console.error(t('documents.messages.consoleError') + ':', error);
+      toast.error(error instanceof Error ? error.message : t('documents.messages.error'));
     } finally {
       setIsSubmitting(false);
     }
@@ -311,7 +308,7 @@ export function DocumentForm({
                   <FileText className="h-8 w-8 text-primary ml-2" />
                   <div className="flex-1">
                     <h3 className="font-medium text-sm">
-                      {editingDocument ? 'الملف الحالي' : 'الملف المرفق'}
+                      {editingDocument ? t('documents.form.file') : t('documents.form.file')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       {uploadedFile ? uploadedFile.name : editingDocument?.file_name}
@@ -325,14 +322,14 @@ export function DocumentForm({
                   {uploadedFile && uploadedFile.type.startsWith('image/') && (
                     <img
                       src={URL.createObjectURL(uploadedFile)}
-                      alt="معاينة الملف"
+                      alt={t('documents.actions.preview')}
                       className="h-12 w-12 object-cover rounded border"
                     />
                   )}
                   {!uploadedFile && editingDocument?.file_path && editingDocument.file_path.startsWith('data:image') && (
                     <img
                       src={editingDocument.file_path}
-                      alt="معاينة الملف"
+                      alt={t('documents.actions.preview')}
                       className="h-12 w-12 object-cover rounded border"
                     />
                   )}
@@ -347,9 +344,9 @@ export function DocumentForm({
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>عنوان الوثيقة *</FormLabel>
+                    <FormLabel>{t('documents.form.title')} *</FormLabel>
                     <FormControl>
-                      <Input placeholder="أدخل عنوان الوثيقة (3-120 حرف)" {...field} />
+                      <Input placeholder={t('documents.form.titlePlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -361,7 +358,7 @@ export function DocumentForm({
                 name="beneficiary_type"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>نوع المستفيد *</FormLabel>
+                    <FormLabel>{t('documents.form.beneficiaryType')} *</FormLabel>
                     <Select 
                       onValueChange={(value: 'company' | 'employee') => {
                         field.onChange(value);
@@ -378,20 +375,20 @@ export function DocumentForm({
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="اختر نوع المستفيد" />
+                          <SelectValue placeholder={t('documents.form.beneficiaryType')} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="company">
                           <div className="flex items-center space-x-2">
                             <Building2 className="h-4 w-4 ml-2" />
-                            <span>شركة</span>
+                            <span>{t('documents.form.beneficiaryTypes.company')}</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="employee">
                           <div className="flex items-center space-x-2">
                             <User className="h-4 w-4 ml-2" />
-                            <span>موظف</span>
+                            <span>{t('documents.form.beneficiaryTypes.employee')}</span>
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -407,7 +404,7 @@ export function DocumentForm({
               <div className="space-y-4 p-4 border rounded-lg bg-blue-50/30">
                 <h3 className="font-medium text-sm flex items-center space-x-2">
                   <Building2 className="h-4 w-4 ml-2" />
-                  <span>بيانات الشركة</span>
+                  <span>{t('documents.form.company')} Data</span>
                 </h3>
                 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -416,21 +413,21 @@ export function DocumentForm({
                     name="company_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>اسم الشركة *</FormLabel>
+                        <FormLabel>{t('documents.form.company')} *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="اختر الشركة" />
+                              <SelectValue placeholder={t('documents.form.selectCompany')} />
                             </SelectTrigger>
                           </FormControl>
                            <SelectContent>
                             {companies.length > 0 ? companies.map((company) => (
                               <SelectItem key={company.id} value={company.id}>
-                                {company.name}
+                                {language === 'ar' ? company.name_ar : company.name}
                               </SelectItem>
                             )) : (
                               <SelectItem value="no_companies" disabled>
-                                لا توجد شركات متاحة
+                                {t('common.noData')}
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -445,17 +442,17 @@ export function DocumentForm({
                     name="document_type_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>نوع الوثيقة *</FormLabel>
+                        <FormLabel>{t('documents.form.documentType')} *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="اختر نوع الوثيقة" />
+                              <SelectValue placeholder={t('documents.form.selectDocumentType')} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {documentTypes.map((type) => (
                               <SelectItem key={type.id} value={type.id}>
-                                {type.name_ar}
+                                {language === 'ar' ? type.name_ar : type.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -471,17 +468,17 @@ export function DocumentForm({
                   name="ministry_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>الوزارة/الجهة *</FormLabel>
+                      <FormLabel>{t('documents.form.ministry')} *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="اختر الوزارة أو الجهة" />
+                            <SelectValue placeholder={t('documents.form.selectMinistry')} />
                           </SelectTrigger>
                         </FormControl>
                          <SelectContent>
                            {dynamicMinistries.map((ministry) => (
                              <SelectItem key={ministry.id} value={ministry.id}>
-                               {ministry.name_ar}
+                               {language === 'ar' ? ministry.name_ar : ministry.name}
                              </SelectItem>
                            ))}
                          </SelectContent>
@@ -498,9 +495,9 @@ export function DocumentForm({
                     name="entity_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>اسم الجهة *</FormLabel>
+                        <FormLabel>{t('documents.form.entityNameLabel')}</FormLabel>
                         <FormControl>
-                          <Input placeholder="أدخل اسم الجهة" {...field} />
+                          <Input placeholder={t('documents.form.entityNamePlaceholder')} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -515,7 +512,7 @@ export function DocumentForm({
               <div className="space-y-4 p-4 border rounded-lg bg-green-50/30">
                 <h3 className="font-medium text-sm flex items-center space-x-2">
                   <User className="h-4 w-4 ml-2" />
-                  <span>بيانات الموظف</span>
+                  <span>{t('documents.form.employeeDataLabel')}</span>
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -524,7 +521,7 @@ export function DocumentForm({
                     name="company_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>تصفية حسب الشركة (اختياري)</FormLabel>
+                        <FormLabel>{t('documents.form.filterByCompanyLabel')}</FormLabel>
                         <Select 
                           onValueChange={(value) => {
                             setSelectedCompany(value);
@@ -534,11 +531,11 @@ export function DocumentForm({
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="جميع الشركات" />
+                              <SelectValue placeholder={t('documents.form.allCompaniesOption')} />
                             </SelectTrigger>
                           </FormControl>
                            <SelectContent>
-                            <SelectItem value="all_companies">جميع الشركات</SelectItem>
+                            <SelectItem value="all_companies">{t('documents.form.allCompaniesOption')}</SelectItem>
                             {companies.map((company) => (
                               <SelectItem key={company.id} value={company.id}>
                                 {company.name}
@@ -556,11 +553,11 @@ export function DocumentForm({
                     name="employee_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>الموظف *</FormLabel>
+                        <FormLabel>{t('documents.form.employeeLabel')}</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="اختر الموظف" />
+                              <SelectValue placeholder={t('documents.form.selectEmployeeLabel')} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -582,11 +579,11 @@ export function DocumentForm({
                   name="document_type_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>نوع الوثيقة *</FormLabel>
+                      <FormLabel>{t('documents.form.documentTypeLabel')}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="اختر نوع الوثيقة" />
+                            <SelectValue placeholder={t('documents.form.selectDocumentTypeLabel')} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -611,7 +608,7 @@ export function DocumentForm({
                 name="issue_date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>تاريخ الإصدار</FormLabel>
+                    <FormLabel>{t('documents.form.issueDate')}</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
@@ -625,7 +622,7 @@ export function DocumentForm({
                             {field.value ? (
                               format(field.value, "PPP")
                             ) : (
-                              <span>اختر التاريخ</span>
+                              <span>{t('documents.form.selectDate')}</span>
                             )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
@@ -655,15 +652,15 @@ export function DocumentForm({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel className="flex items-center space-x-2">
-                      <span>تاريخ الانتهاء *</span>
+                      <span>{t('documents.form.expiryDate')} *</span>
                       {watchedExpiryDate && (
                         <Badge 
                           variant={calculateStatus(watchedExpiryDate) === 'expired' ? 'destructive' : 
                                   calculateStatus(watchedExpiryDate) === 'expiring_soon' ? 'destructive' : 'default'}
                           className="text-xs"
                         >
-                          {calculateStatus(watchedExpiryDate) === 'expired' ? 'منتهي الصلاحية' :
-                           calculateStatus(watchedExpiryDate) === 'expiring_soon' ? 'ينتهي قريباً' : 'صالح'}
+                          {calculateStatus(watchedExpiryDate) === 'expired' ? t('documents.statusOptions.expired') :
+                           calculateStatus(watchedExpiryDate) === 'expiring_soon' ? t('documents.statusOptions.expiringSoon') : t('documents.statusOptions.valid')}
                         </Badge>
                       )}
                     </FormLabel>
@@ -680,7 +677,7 @@ export function DocumentForm({
                             {field.value ? (
                               format(field.value, "PPP")
                             ) : (
-                              <span>اختر التاريخ</span>
+                              <span>{t('documents.form.selectDate')}</span>
                             )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
@@ -709,10 +706,10 @@ export function DocumentForm({
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>ملاحظات</FormLabel>
+                  <FormLabel>{t('documents.form.notes')}</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="أدخل أي ملاحظات إضافية..."
+                      placeholder={t('documents.form.notesPlaceholder')}
                       className="min-h-[100px]"
                       {...field}
                     />
@@ -726,7 +723,7 @@ export function DocumentForm({
             <div className="flex justify-between pt-4 border-t">
               <Button type="button" variant="outline" onClick={onClose}>
                 <X className="h-4 w-4 ml-2" />
-                إلغاء
+                {t('documents.form.buttons.cancel')}
               </Button>
               
               <div className="flex space-x-2">
@@ -737,8 +734,8 @@ export function DocumentForm({
                 >
                   <Save className="h-4 w-4 ml-2" />
                   {isSubmitting ?
-                    (editingDocument ? 'جاري التحديث...' : 'جاري الحفظ...') :
-                    (editingDocument ? 'تحديث' : 'حفظ')
+                    (editingDocument ? t('common.loading') + '...' : t('common.loading') + '...') :
+                    (editingDocument ? t('documents.form.buttons.update') : t('documents.form.buttons.save'))
                   }
                 </Button>
                 
@@ -760,7 +757,7 @@ export function DocumentForm({
                     }}
                   >
                     <Plus className="h-4 w-4 ml-2" />
-                    حفظ وإضافة أخرى
+                    {t('documents.form.buttons.save')} & {t('common.add')} {t('common.next')}
                   </Button>
                 )}
               </div>

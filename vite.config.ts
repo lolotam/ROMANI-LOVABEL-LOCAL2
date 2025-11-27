@@ -19,4 +19,7 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Ensure documents are served correctly
+  publicDir: 'public',
+  assetsInclude: ['**/*.pdf', '**/*.doc', '**/*.docx', '**/*.jpg', '**/*.jpeg', '**/*.png', '**/*.gif'],
 }));

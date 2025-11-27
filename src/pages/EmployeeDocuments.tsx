@@ -9,26 +9,28 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { Layout } from '@/components/Layout';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { calculateDocumentStatus } from '@/lib/statusUtils';
 import { UploadDropzone } from '@/components/ui/UploadDropzone';
 import { DocumentForm } from '@/components/DocumentForm';
-import { 
-  FileText, 
-  Plus, 
-  Search, 
-  Filter, 
-  Download, 
-  Trash2, 
-  Eye, 
-  Edit, 
-  Upload, 
-  Calendar, 
-  Building2, 
-  User, 
-  Grid, 
-  List, 
+import {
+  FileText,
+  Plus,
+  Search,
+  Filter,
+  Download,
+  Trash2,
+  Eye,
+  Edit,
+  Upload,
+  Calendar,
+  Building2,
+  User,
+  Grid,
+  List,
   MoreVertical,
   ArrowLeft,
   UserCheck,
@@ -119,6 +121,7 @@ export default function EmployeeDocuments() {
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const [employeePhoto, setEmployeePhoto] = useState<string | null>(null);
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (employeeId) {
@@ -151,8 +154,8 @@ export default function EmployeeDocuments() {
         // Check if employee is active
         if (employee.is_active === false) {
           toast({
-            title: 'غير مصرح',
-            description: 'هذا الموظف غير نشط ولا يمكن عرض وثائقه',
+            title: t('employeeDocuments.unauthorized'),
+            description: t('employeeDocuments.inactiveEmployee'),
             variant: 'destructive'
           });
           navigate('/employees');
@@ -165,8 +168,8 @@ export default function EmployeeDocuments() {
     } catch (error) {
       console.error('Error fetching employee:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحميل بيانات الموظف',
+        title: t('common.error'),
+        description: t('employees.messages.loadError'),
         variant: 'destructive'
       });
     }
@@ -196,8 +199,8 @@ export default function EmployeeDocuments() {
     } catch (error) {
       console.error('Error fetching documents:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحميل الوثائق',
+        title: t('common.error'),
+        description: t('documents.messages.loadError'),
         variant: 'destructive'
       });
     } finally {
@@ -253,13 +256,13 @@ export default function EmployeeDocuments() {
   const filteredDocuments = useMemo(() => {
     let filtered = documents.filter(doc => {
       const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           doc.document_types?.name_ar.toLowerCase().includes(searchTerm.toLowerCase());
+        doc.document_types?.name_ar.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = selectedStatus === 'all' || doc.status === selectedStatus;
       const matchesType = selectedType === 'all' || doc.document_type_id === selectedType;
-      
+
       return matchesSearch && matchesStatus && matchesType;
     });
-    
+
     return filtered;
   }, [documents, searchTerm, selectedStatus, selectedType]);
 
@@ -282,6 +285,8 @@ export default function EmployeeDocuments() {
 
   const handleDocumentSaved = async () => {
     await fetchDocuments();
+    // Also update the employee to reflect new document count
+    await fetchEmployee();
     handleDocumentFormClose();
   };
 
@@ -291,7 +296,7 @@ export default function EmployeeDocuments() {
   };
 
   const handleDeleteDocument = async (docId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الوثيقة؟')) return;
+    if (!confirm(t('employeeDocuments.deleteConfirm'))) return;
 
     try {
       const { error } = await jsonDatabase.delete('documents', docId);
@@ -299,16 +304,16 @@ export default function EmployeeDocuments() {
       if (error) throw error;
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم حذف الوثيقة بنجاح'
+        title: t('common.success'),
+        description: t('documents.messages.deleteSuccess')
       });
 
-      fetchDocuments();
+      await Promise.all([fetchDocuments(), fetchEmployee()]);
     } catch (error) {
       console.error('Error deleting document:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في حذف الوثيقة',
+        title: t('common.error'),
+        description: t('documents.messages.deleteError'),
         variant: 'destructive'
       });
     }
@@ -322,8 +327,8 @@ export default function EmployeeDocuments() {
   const handleDownloadDocument = async (doc: Document) => {
     if (!doc.file_path) {
       toast({
-        title: 'خطأ',
-        description: 'لا يوجد ملف للتحميل',
+        title: t('common.error'),
+        description: t('documents.messages.noFileError'),
         variant: 'destructive'
       });
       return;
@@ -362,14 +367,14 @@ export default function EmployeeDocuments() {
       }
 
       toast({
-        title: 'تم بنجاح',
-        description: 'تم تحميل الوثيقة بنجاح'
+        title: t('common.success'),
+        description: t('documents.messages.downloadSuccess') || 'Document downloaded successfully'
       });
     } catch (error) {
       console.error('Error downloading document:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في تحميل الوثيقة',
+        title: t('common.error'),
+        description: t('documents.messages.downloadError'),
         variant: 'destructive'
       });
     }
@@ -383,8 +388,8 @@ export default function EmployeeDocuments() {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
-        title: 'خطأ',
-        description: 'يرجى اختيار صورة صالحة',
+        title: t('common.error'),
+        description: t('documents.messages.fileTypeError'),
         variant: 'destructive'
       });
       return;
@@ -393,8 +398,8 @@ export default function EmployeeDocuments() {
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
-        title: 'خطأ',
-        description: 'حجم الصورة يجب أن يكون أقل من 5 ميجابايت',
+        title: t('common.error'),
+        description: t('documents.messages.fileSizeError'),
         variant: 'destructive'
       });
       return;
@@ -416,8 +421,8 @@ export default function EmployeeDocuments() {
         setIsPhotoUploadOpen(false);
 
         toast({
-          title: 'تم بنجاح',
-          description: 'تم رفع صورة الموظف بنجاح'
+          title: t('common.success'),
+          description: t('employeeDocuments.photoUploadSuccess')
         });
       };
 
@@ -425,530 +430,551 @@ export default function EmployeeDocuments() {
     } catch (error) {
       console.error('Error uploading photo:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في رفع الصورة',
+        title: t('common.error'),
+        description: t('documents.messages.saveError'),
         variant: 'destructive'
       });
     }
   };
 
-  const handleRemovePhoto = async () => {
-    if (!confirm('هل أنت متأكد من حذف صورة الموظف؟')) return;
+    const handleRemovePhoto = async () => {
+      if (!confirm(t('employeeDocuments.photoDeleteConfirm'))) return;
 
-    try {
-      const { error } = await jsonDatabase
-        .update('employees', employeeId!, { photo: null });
+      try {
+        const { error } = await jsonDatabase
+          .update('employees', employeeId!, { photo: null });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      setEmployeePhoto(null);
+        setEmployeePhoto(null);
 
-      toast({
-        title: 'تم بنجاح',
-        description: 'تم حذف صورة الموظف بنجاح'
-      });
-    } catch (error) {
-      console.error('Error removing photo:', error);
-      toast({
-        title: 'خطأ',
-        description: 'فشل في حذف الصورة',
-        variant: 'destructive'
-      });
-    }
-  };
+        toast({
+          title: t('common.success'),
+          description: t('employeeDocuments.photoDeleteSuccess')
+        });
+      } catch (error) {
+        console.error('Error removing photo:', error);
+        toast({
+          title: t('common.error'),
+          description: t('documents.messages.deleteError'),
+          variant: 'destructive'
+        });
+      }
+    };
 
-  const DocumentCard = ({ doc }: { doc: Document }) => (
-    <Card className="group hover:shadow-elegant transition-all duration-300 relative">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="text-lg font-semibold line-clamp-2">
-              {doc.title}
-            </CardTitle>
-            <CardDescription className="mt-1">
-              {doc.document_types?.name_ar}
-            </CardDescription>
+    const DocumentCard = ({ doc }: { doc: Document }) => (
+      <Card className="group hover:shadow-elegant transition-all duration-300 relative">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <CardTitle className="text-lg font-semibold line-clamp-2">
+                {doc.title}
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {doc.document_types?.name_ar}
+              </CardDescription>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <StatusBadge status={doc.status || 'valid'} />
-          {doc.ministries && (
-            <Badge variant="outline" className="text-xs">
-              {doc.ministries.name_ar}
-            </Badge>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <StatusBadge status={calculateDocumentStatus(doc.expiry_date)} />
+            {doc.ministries && (
+              <Badge variant="outline" className="text-xs">
+                {doc.ministries.name_ar}
+              </Badge>
+            )}
+          </div>
+
+          {doc.expiry_date && (
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Calendar className="h-4 w-4 ml-2" />
+              <span>{t('documents.card.expiresOn')} {new Date(doc.expiry_date + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-GB').replace(/\//g, '-')}</span>
+            </div>
           )}
-        </div>
-        
-        {doc.expiry_date && (
-          <div className="flex items-center text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4 ml-2" />
-            <span>ينتهي: {new Date(doc.expiry_date).toLocaleDateString('en-GB').replace(/\//g, '-')} ميلادي</span>
-          </div>
-        )}
-        
-        <div className="flex items-center justify-between pt-2 border-t">
-          <div className="flex space-x-1">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-8 p-0"
-              onClick={() => handleViewDocument(doc)}
-              title="عرض الوثيقة"
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-8 p-0"
-              onClick={() => handleEditDocument(doc)}
-              title="تعديل الوثيقة"
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-8 p-0"
-              onClick={() => handleDownloadDocument(doc)}
-              title="تحميل الوثيقة"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground"
-              onClick={() => handleDeleteDocument(doc.id)}
-              title="حذف الوثيقة"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
-  if (isLoading) {
+          <div className="flex items-center justify-between pt-2 border-t">
+            <div className="flex space-x-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleViewDocument(doc)}
+                title={t('employeeDocuments.view')}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleEditDocument(doc)}
+                title={t('employeeDocuments.edit')}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleDownloadDocument(doc)}
+                title={t('employeeDocuments.download')}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                onClick={() => handleDeleteDocument(doc.id)}
+                title={t('employeeDocuments.delete')}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+
+    if (isLoading) {
+      return (
+        <Layout>
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+          </div>
+        </Layout>
+      );
+    }
+
+    if (!employee) {
+      return (
+        <Layout>
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-destructive">{t('employeeDocuments.employeeNotFound')}</h1>
+              <Button onClick={() => navigate('/employees')} className="mt-4">
+                {t('employeeDocuments.backToList')}
+              </Button>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!employee) {
-    return (
-      <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-destructive">الموظف غير موجود</h1>
-            <Button onClick={() => navigate('/employees')} className="mt-4">
-              العودة إلى قائمة الموظفين
-            </Button>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-  return (
-    <Layout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
-        >
-          <div className="flex flex-col sm:flex-row items-start gap-6 flex-1">
-            {/* Employee Photo Section */}
-            <div className="flex-shrink-0">
-              <div className="relative group">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-primary/20 overflow-hidden bg-gray-50 shadow-elegant hover:shadow-glow transition-all duration-300">
-                  {employeePhoto ? (
-                    <img
-                      src={employeePhoto}
-                      alt={employee.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-                      <User className="h-10 w-10 text-primary/60" />
-                    </div>
-                  )}
-                </div>
-                <div className="absolute -bottom-1 -right-1">
-                  <Button
-                    size="sm"
-                    className="h-8 w-8 rounded-full shadow-lg"
-                    onClick={() => setIsPhotoUploadOpen(true)}
-                  >
-                    <Camera className="h-4 w-4" />
-                  </Button>
-                </div>
-                {employeePhoto && (
-                  <div className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="p-6 space-y-6">
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
+          >
+            <div className="flex flex-col sm:flex-row items-start gap-6 flex-1">
+              {/* Employee Photo Section */}
+              <div className="flex-shrink-0">
+                <div className="relative group">
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-primary/20 overflow-hidden bg-gray-50 shadow-elegant hover:shadow-glow transition-all duration-300">
+                    {employeePhoto ? (
+                      <img
+                        src={employeePhoto}
+                        alt={employee.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+                        <User className="h-10 w-10 text-primary/60" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="absolute -bottom-1 -right-1">
                     <Button
                       size="sm"
-                      variant="destructive"
-                      className="h-6 w-6 rounded-full"
-                      onClick={handleRemovePhoto}
+                      className="h-8 w-8 rounded-full shadow-lg"
+                      onClick={() => setIsPhotoUploadOpen(true)}
                     >
-                      <X className="h-3 w-3" />
+                      <Camera className="h-4 w-4" />
                     </Button>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Employee Info Section */}
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate('/employees')}
-                  className="hover:bg-accent"
-                >
-                  <ArrowLeft className="h-4 w-4 ml-1" />
-                  العودة
-                </Button>
-              </div>
-              <div className="relative inline-block">
-                <h1 className="text-3xl font-bold text-gradient">وثائق {employee.name}</h1>
-                <div className="absolute -top-2 -left-2 bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-lg">
-                  {documents.length}
+                  {employeePhoto && (
+                    <div className="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-6 w-6 rounded-full"
+                        onClick={handleRemovePhoto}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center space-x-2 mt-2">
-                <UserCheck className="h-5 w-5 text-primary" />
-                <span className="text-muted-foreground">{employee.companies?.name}</span>
-                {employee.position && (
-                  <>
-                    <span className="text-muted-foreground">•</span>
-                    <Badge variant="outline">{employee.position}</Badge>
-                  </>
-                )}
-              </div>
-              <p className="text-muted-foreground mt-1">
-                إجمالي {documents.length} وثيقة
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex gap-2">
-            <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="shadow-elegant hover:shadow-glow transition-all">
-                  <Upload className="h-4 w-4 ml-2" />
-                  رفع وثيقة جديدة
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>رفع وثيقة جديدة لـ {employee.name}</DialogTitle>
-                  <DialogDescription>
-                    اختر الملف الذي تريد رفعه
-                  </DialogDescription>
-                </DialogHeader>
-                <UploadDropzone
-                  onFilesAccepted={handleFilesAccepted}
-                  maxFiles={1}
-                  maxFileSize={50 * 1024 * 1024} // 50MB
-                />
-              </DialogContent>
-            </Dialog>
-          </div>
-        </motion.div>
 
-        {/* Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <Card className="shadow-soft">
-            <CardContent className="p-6">
-              <div className="flex flex-col lg:flex-row gap-4">
-                <div className="flex-1">
-                  <Label htmlFor="search">البحث</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="search"
-                      placeholder="البحث في الوثائق..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
+              {/* Employee Info Section */}
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate('/employees')}
+                    className="hover:bg-accent"
+                  >
+                    <ArrowLeft className="h-4 w-4 ml-1" />
+                    {t('employeeDocuments.back')}
+                  </Button>
+                </div>
+                <div className="relative inline-block">
+                  <h1 className="text-3xl font-bold text-gradient">{t('employeeDocuments.title', { name: employee.name })}</h1>
+                  <div className="absolute -top-2 -left-2 bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold shadow-lg">
+                    {documents.length}
                   </div>
                 </div>
-                
-                <div className="w-full lg:w-48">
-                  <Label>الحالة</Label>
-                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">جميع الحالات</SelectItem>
-                      <SelectItem value="valid">صالح</SelectItem>
-                      <SelectItem value="expiring_soon">ينتهي قريباً</SelectItem>
-                      <SelectItem value="expired">منتهي الصلاحية</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-center space-x-2 mt-2">
+                  <UserCheck className="h-5 w-5 text-primary" />
+                  <span className="text-muted-foreground">{employee.companies?.name}</span>
+                  {employee.position && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <Badge variant="outline">{employee.position}</Badge>
+                    </>
+                  )}
                 </div>
-                
-                <div className="w-full lg:w-48">
-                  <Label>نوع الوثيقة</Label>
-                  <Select value={selectedType} onValueChange={setSelectedType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">جميع الأنواع</SelectItem>
-                      {documentTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id}>
-                          {type.name_ar}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex items-end space-x-2">
-                  <Button
-                    variant={viewMode === 'grid' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('grid')}
-                  >
-                    <Grid className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={viewMode === 'list' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('list')}
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                </div>
+                <p className="text-muted-foreground mt-1">
+                  {t('employeeDocuments.totalDocuments', { count: documents.length })}
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+            </div>
 
-        {/* Documents */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          {filteredDocuments.length === 0 ? (
-            <Card className="p-8 text-center">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                لا توجد وثائق
-              </h3>
-              <p className="text-muted-foreground mb-4">
-                {searchTerm || selectedStatus !== 'all' || selectedType !== 'all' 
-                  ? 'لا توجد وثائق تطابق معايير البحث' 
-                  : 'لم يتم رفع أي وثائق لهذا الموظف بعد'
-                }
-              </p>
-              <Button onClick={() => setIsUploadDialogOpen(true)}>
-                <Upload className="h-4 w-4 ml-2" />
-                رفع أول وثيقة
-              </Button>
+            <div className="flex gap-2">
+              <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="shadow-elegant hover:shadow-glow transition-all">
+                    <Upload className="h-4 w-4 ml-2" />
+                    {t('employeeDocuments.uploadNew')}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>{t('employeeDocuments.uploadTitle', { name: employee.name })}</DialogTitle>
+                    <DialogDescription>
+                      {t('employeeDocuments.uploadDesc')}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <UploadDropzone
+                    onFilesAccepted={handleFilesAccepted}
+                    maxFiles={1}
+                    maxFileSize={50 * 1024 * 1024} // 50MB
+                  />
+                </DialogContent>
+              </Dialog>
+            </div>
+          </motion.div>
+
+          {/* Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card className="shadow-soft">
+              <CardContent className="p-6">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="search">{t('employeeDocuments.search')}</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="search"
+                        placeholder={t('employeeDocuments.searchPlaceholder')}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full lg:w-48">
+                    <Label>{t('employeeDocuments.status')}</Label>
+                    <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('employeeDocuments.allStatuses')}</SelectItem>
+                        <SelectItem value="valid">{t('employeeDocuments.valid')}</SelectItem>
+                        <SelectItem value="expiring_soon">{t('employeeDocuments.expiringSoon')}</SelectItem>
+                        <SelectItem value="expired">{t('employeeDocuments.expired')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="w-full lg:w-48">
+                    <Label>{t('employeeDocuments.documentType')}</Label>
+                    <Select value={selectedType} onValueChange={setSelectedType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('employeeDocuments.allTypes')}</SelectItem>
+                        {documentTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id}>
+                            {type.name_ar}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-end space-x-2">
+                    <Button
+                      variant={viewMode === 'grid' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('grid')}
+                    >
+                      <Grid className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === 'list' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('list')}
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
             </Card>
-          ) : (
-            <div className={viewMode === 'grid' ? 
-              "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : 
-              "space-y-2"
-            }>
-              {filteredDocuments.map((doc) => (
-                <DocumentCard key={doc.id} doc={doc} />
-              ))}
-            </div>
-          )}
-        </motion.div>
+          </motion.div>
 
-        {/* Document Form Dialog */}
-        <Dialog open={showDocumentForm} onOpenChange={(open) => !open && handleDocumentFormClose()}>
-          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingDocument ? 'تعديل الوثيقة' : 'إضافة وثيقة جديدة'}</DialogTitle>
-              <DialogDescription>
-                {editingDocument ? 'تعديل بيانات الوثيقة' : 'إضافة وثيقة جديدة للموظف'}
-              </DialogDescription>
-            </DialogHeader>
-            {(uploadedFile || editingDocument) && (
-              <DocumentForm
-                uploadedFile={uploadedFile}
-                fileName={uploadedFileName}
-                onClose={handleDocumentFormClose}
-                onSuccess={handleDocumentSaved}
-                documentTypes={documentTypes}
-                companies={companies}
-                employees={employee ? [employee] : []}
-                ministries={ministries}
-                editingDocument={editingDocument}
-                preselectedEmployeeId={employeeId}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* View Document Dialog */}
-        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>تفاصيل الوثيقة</DialogTitle>
-              <DialogDescription>
-                عرض جميع بيانات الوثيقة
-              </DialogDescription>
-            </DialogHeader>
-            {selectedDocument && (
-              <div className="space-y-6">
-                {/* File Preview Section */}
-                {selectedDocument.file_path && (
-                  <div className="border rounded-lg p-4 bg-gray-50">
-                    <Label className="text-sm font-medium text-muted-foreground mb-2 block">معاينة الملف</Label>
-                    {(() => {
-                      const fileName = selectedDocument.file_name || '';
-                      const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
-                      const isPdf = /\.pdf$/i.test(fileName);
-
-                      if (isImage && selectedDocument.file_path) {
-                        return (
-                          <div className="flex justify-center">
-                            <img
-                              src={selectedDocument.file_path}
-                              alt={selectedDocument.title}
-                              className="max-w-full max-h-96 object-contain rounded border"
-                              onError={(e) => {
-                                e.currentTarget.src = '/placeholder-image.png';
-                              }}
-                            />
-                          </div>
-                        );
-                      } else if (isPdf && selectedDocument.file_path) {
-                        return (
-                          <div className="text-center">
-                            <iframe
-                              src={selectedDocument.file_path}
-                              className="w-full h-96 border rounded"
-                              title={selectedDocument.title}
-                            />
-                            <p className="text-sm text-muted-foreground mt-2">
-                              ملف PDF - اضغط على تحميل لعرضه بطريقة أفضل
-                            </p>
-                          </div>
-                        );
-                      } else {
-                        return (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>معاينة الملف غير متوفرة لهذا النوع</p>
-                            <p className="text-xs">{fileName}</p>
-                          </div>
-                        );
-                      }
-                    })()}
-                  </div>
-                )}
-
-                {/* Document Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">العنوان</Label>
-                    <p className="text-sm font-medium">{selectedDocument.title}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">نوع الوثيقة</Label>
-                    <p className="text-sm">{selectedDocument.document_types?.name_ar}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">الحالة</Label>
-                    <StatusBadge status={selectedDocument.status || 'valid'} />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">اسم الملف</Label>
-                    <p className="text-sm">{selectedDocument.file_name || 'غير متوفر'}</p>
-                  </div>
-                  {selectedDocument.issue_date && (
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">تاريخ الإصدار</Label>
-                      <p className="text-sm">{new Date(selectedDocument.issue_date).toLocaleDateString('en-GB').replace(/\//g, '-')}</p>
-                    </div>
-                  )}
-                  {selectedDocument.expiry_date && (
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">تاريخ انتهاء الصلاحية</Label>
-                      <p className="text-sm">{new Date(selectedDocument.expiry_date).toLocaleDateString('en-GB').replace(/\//g, '-')}</p>
-                    </div>
-                  )}
-                  {selectedDocument.ministries && (
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">الوزارة</Label>
-                      <p className="text-sm">{selectedDocument.ministries.name_ar}</p>
-                    </div>
-                  )}
-                  {selectedDocument.notes && (
-                    <div className="md:col-span-2">
-                      <Label className="text-sm font-medium text-muted-foreground">ملاحظات</Label>
-                      <p className="text-sm">{selectedDocument.notes}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-2 pt-4">
-                  <Button
-                    onClick={() => handleDownloadDocument(selectedDocument)}
-                    className="flex-1"
-                  >
-                    <Download className="h-4 w-4 ml-2" />
-                    تحميل الوثيقة
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsViewDialogOpen(false)}
-                  >
-                    إغلاق
-                  </Button>
-                </div>
+          {/* Documents */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            {filteredDocuments.length === 0 ? (
+              <Card className="p-8 text-center">
+                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-medium text-muted-foreground mb-2">
+                  {t('employeeDocuments.noDocuments')}
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  {searchTerm || selectedStatus !== 'all' || selectedType !== 'all'
+                    ? t('employeeDocuments.noDocumentsDesc')
+                    : t('employeeDocuments.noDocumentsEmpty')
+                  }
+                </p>
+                <Button onClick={() => setIsUploadDialogOpen(true)}>
+                  <Upload className="h-4 w-4 ml-2" />
+                  {t('employeeDocuments.uploadFirst')}
+                </Button>
+              </Card>
+            ) : (
+              <div className={viewMode === 'grid' ?
+                "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" :
+                "space-y-2"
+              }>
+                {filteredDocuments.map((doc) => (
+                  <DocumentCard key={doc.id} doc={doc} />
+                ))}
               </div>
             )}
-          </DialogContent>
-        </Dialog>
+          </motion.div>
 
-        {/* Photo Upload Dialog */}
-        <Dialog open={isPhotoUploadOpen} onOpenChange={setIsPhotoUploadOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>رفع صورة الموظف</DialogTitle>
-              <DialogDescription>
-                اختر صورة للموظف {employee.name}
-              </DialogDescription>
-            </DialogHeader>
-            <UploadDropzone
-              onFilesAccepted={handlePhotoUpload}
-              maxFiles={1}
-              maxFileSize={5 * 1024 * 1024} // 5MB
-              acceptedFileTypes={['image/*']}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center"
-            />
-            <div className="text-xs text-muted-foreground text-center">
-              حجم الصورة الأقصى: 5 ميجابايت • الصيغ المدعومة: JPG, PNG, GIF
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </Layout>
-  );
-}
+          {/* Document Form Dialog */}
+          <Dialog open={showDocumentForm} onOpenChange={(open) => !open && handleDocumentFormClose()}>
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingDocument ? t('documents.card.editDocument') : t('documents.addDocument')}</DialogTitle>
+                <DialogDescription>
+                  {editingDocument ? t('documents.form.editDescription') || 'Edit document details' : t('documents.employeeDocumentForm.description')}
+                </DialogDescription>
+              </DialogHeader>
+              {(uploadedFile || editingDocument) && (
+                <DocumentForm
+                  uploadedFile={uploadedFile}
+                  fileName={uploadedFileName}
+                  onClose={handleDocumentFormClose}
+                  onSuccess={handleDocumentSaved}
+                  documentTypes={documentTypes}
+                  companies={companies}
+                  employees={employee ? [employee] : []}
+                  ministries={ministries}
+                  editingDocument={editingDocument}
+                  preselectedEmployeeId={employeeId}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* View Document Dialog */}
+          <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>تفاصيل الوثيقة</DialogTitle>
+                <DialogDescription>
+                  عرض جميع بيانات الوثيقة
+                </DialogDescription>
+              </DialogHeader>
+              {selectedDocument && (
+                <div className="space-y-6">
+                  {/* File Preview Section */}
+                  {selectedDocument.file_path && (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <Label className="text-sm font-medium text-muted-foreground mb-2 block">معاينة الملف</Label>
+                      {(() => {
+                        const fileName = selectedDocument.file_name || '';
+                        const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileName);
+                        const isPdf = /\.pdf$/i.test(fileName);
+
+                        if (isImage && selectedDocument.file_path) {
+                          // Check if it's a base64 data URL or a regular file path
+                          if (selectedDocument.file_path.startsWith('data:image')) {
+                            return (
+                              <div className="flex justify-center">
+                                <img
+                                  src={selectedDocument.file_path}
+                                  alt={selectedDocument.title}
+                                  className="max-w-full max-h-96 object-contain rounded border"
+                                />
+                              </div>
+                            );
+                          } else {
+                            // File path reference - show placeholder since file doesn't exist
+                            return (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                                <p>⚠️ الملف غير متوفر على الخادم</p>
+                                <p className="text-xs">مسار الملف: {selectedDocument.file_path}</p>
+                                <p className="text-xs text-red-500">يرجى رفع الملف مرة أخرى</p>
+                              </div>
+                            );
+                          }
+                        } else if (isPdf && selectedDocument.file_path) {
+                          if (selectedDocument.file_path.startsWith('data:application/pdf')) {
+                            return (
+                              <div className="text-center">
+                                <iframe
+                                  src={selectedDocument.file_path}
+                                  className="w-full h-96 border rounded"
+                                  title={selectedDocument.title}
+                                />
+                                <p className="text-sm text-muted-foreground mt-2">
+                                  ملف PDF - اضغط على تحميل لعرضه بطريقة أفضل
+                                </p>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                                <p>⚠️ ملف PDF غير متوفر على الخادم</p>
+                                <p className="text-xs">مسار الملف: {selectedDocument.file_path}</p>
+                                <p className="text-xs text-red-500">يرجى رفع الملف مرة أخرى</p>
+                              </div>
+                            );
+                          }
+                        } else {
+                          return (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                              <p>معاينة الملف غير متوفرة لهذا النوع</p>
+                              <p className="text-xs">{fileName}</p>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Document Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">العنوان</Label>
+                      <p className="text-sm font-medium">{selectedDocument.title}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">نوع الوثيقة</Label>
+                      <p className="text-sm">{selectedDocument.document_types?.name_ar}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">الحالة</Label>
+                      <StatusBadge status={calculateDocumentStatus(selectedDocument.expiry_date)} />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">اسم الملف</Label>
+                      <p className="text-sm">{selectedDocument.file_name || 'غير متوفر'}</p>
+                    </div>
+                    {selectedDocument.issue_date && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">تاريخ الإصدار</Label>
+                        <p className="text-sm">{new Date(selectedDocument.issue_date).toLocaleDateString('en-GB').replace(/\//g, '-')}</p>
+                      </div>
+                    )}
+                    {selectedDocument.expiry_date && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">تاريخ انتهاء الصلاحية</Label>
+                        <p className="text-sm">{new Date(selectedDocument.expiry_date + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-GB').replace(/\//g, '-')}</p>
+                      </div>
+                    )}
+                    {selectedDocument.ministries && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">الوزارة</Label>
+                        <p className="text-sm">{selectedDocument.ministries.name_ar}</p>
+                      </div>
+                    )}
+                    {selectedDocument.notes && (
+                      <div className="md:col-span-2">
+                        <Label className="text-sm font-medium text-muted-foreground">ملاحظات</Label>
+                        <p className="text-sm">{selectedDocument.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                    <Button
+                      onClick={() => handleDownloadDocument(selectedDocument)}
+                      className="flex-1"
+                    >
+                      <Download className="h-4 w-4 ml-2" />
+                      تحميل الوثيقة
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsViewDialogOpen(false)}
+                    >
+                      إغلاق
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Photo Upload Dialog */}
+          <Dialog open={isPhotoUploadOpen} onOpenChange={setIsPhotoUploadOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>رفع صورة الموظف</DialogTitle>
+                <DialogDescription>
+                  اختر صورة للموظف {employee.name}
+                </DialogDescription>
+              </DialogHeader>
+              <UploadDropzone
+                onFilesAccepted={handlePhotoUpload}
+                maxFiles={1}
+                maxFileSize={5 * 1024 * 1024} // 5MB
+                acceptedFileTypes={['image/*']}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center"
+              />
+              <div className="text-xs text-muted-foreground text-center">
+                حجم الصورة الأقصى: 5 ميجابايت • الصيغ المدعومة: JPG, PNG, GIF
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </Layout>
+    );
+  }

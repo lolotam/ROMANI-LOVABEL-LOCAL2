@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { jsonDatabase } from '@/lib/jsonDatabase';
 import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface DocumentType {
   id: string;
@@ -43,6 +44,7 @@ export function EmployeeDocumentForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
   const [ministries, setMinistries] = useState<Ministry[]>([]);
+  const { t } = useLanguage();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -115,7 +117,7 @@ export function EmployeeDocumentForm({
     e.preventDefault();
     
     if (!formData.title || !formData.document_type_id) {
-      toast.error('يرجى ملء جميع الحقول المطلوبة');
+      toast.error(t('documents.employeeDocumentForm.requiredFieldsError'));
       return;
     }
 
@@ -147,15 +149,15 @@ export function EmployeeDocumentForm({
       }]);
 
       if (dbError) {
-        throw new Error(`فشل في حفظ بيانات الوثيقة: ${dbError.message}`);
+        throw new Error(`${t('documents.employeeDocumentForm.saveError')}: ${dbError.message}`);
       }
 
-      toast.success('تم حفظ الوثيقة بنجاح');
+      toast.success(t('documents.employeeDocumentForm.saveSuccess'));
       onSave();
       onClose();
     } catch (error: any) {
       console.error('Error saving document:', error);
-      toast.error(error.message || 'فشل في حفظ الوثيقة');
+      toast.error(error.message || t('documents.employeeDocumentForm.saveError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -172,35 +174,35 @@ export function EmployeeDocumentForm({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            إضافة وثيقة جديدة
+            {t('documents.employeeDocumentForm.title')}
           </DialogTitle>
           <DialogDescription>
-            أدخل بيانات الوثيقة الجديدة للموظف
+            {t('documents.employeeDocumentForm.description')}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <Label htmlFor="title">عنوان الوثيقة *</Label>
+              <Label htmlFor="title">{t('documents.form.title')} *</Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="أدخل عنوان الوثيقة"
+                placeholder={t('documents.form.titlePlaceholder')}
                 required
               />
             </div>
 
             <div>
-              <Label htmlFor="document_type_id">نوع الوثيقة *</Label>
+              <Label htmlFor="document_type_id">{t('documents.form.documentType')} *</Label>
               <Select
                 value={formData.document_type_id}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, document_type_id: value }))}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر نوع الوثيقة" />
+                  <SelectValue placeholder={t('documents.form.selectDocumentType')} />
                 </SelectTrigger>
                 <SelectContent>
                   {documentTypes.map((type) => (
@@ -213,13 +215,13 @@ export function EmployeeDocumentForm({
             </div>
 
             <div>
-              <Label htmlFor="ministry_id">الوزارة</Label>
+              <Label htmlFor="ministry_id">{t('documents.form.ministry')}</Label>
               <Select
                 value={formData.ministry_id}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, ministry_id: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="اختر الوزارة" />
+                  <SelectValue placeholder={t('documents.form.selectMinistry')} />
                 </SelectTrigger>
                 <SelectContent>
                   {ministries.map((ministry) => (
@@ -232,7 +234,7 @@ export function EmployeeDocumentForm({
             </div>
 
             <div>
-              <Label>تاريخ الإصدار</Label>
+              <Label>{t('documents.form.issueDate')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -243,7 +245,7 @@ export function EmployeeDocumentForm({
                     )}
                   >
                     <CalendarIcon className="ml-2 h-4 w-4" />
-                    {formData.issue_date ? format(formData.issue_date, "PPP") : "اختر التاريخ"}
+                    {formData.issue_date ? format(formData.issue_date, "PPP") : t('documents.form.selectDate')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -258,7 +260,7 @@ export function EmployeeDocumentForm({
             </div>
 
             <div>
-              <Label>تاريخ الانتهاء</Label>
+              <Label>{t('documents.form.expiryDate')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -269,7 +271,7 @@ export function EmployeeDocumentForm({
                     )}
                   >
                     <CalendarIcon className="ml-2 h-4 w-4" />
-                    {formData.expiry_date ? format(formData.expiry_date, "PPP") : "اختر التاريخ"}
+                    {formData.expiry_date ? format(formData.expiry_date, "PPP") : t('documents.form.selectDate')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -284,12 +286,12 @@ export function EmployeeDocumentForm({
             </div>
 
             <div className="md:col-span-2">
-              <Label htmlFor="notes">ملاحظات</Label>
+              <Label htmlFor="notes">{t('documents.form.notes')}</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="أدخل أي ملاحظات إضافية..."
+                placeholder={t('documents.form.notesPlaceholder')}
                 rows={3}
               />
             </div>
@@ -298,7 +300,7 @@ export function EmployeeDocumentForm({
               <div className="md:col-span-2 p-4 bg-muted rounded-lg">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">الملف المرفق:</span>
+                  <span className="text-sm font-medium">{t('documents.employeeDocumentForm.attachedFile')}</span>
                   <span className="text-sm text-muted-foreground">{uploadedFile.name}</span>
                 </div>
               </div>
@@ -310,18 +312,18 @@ export function EmployeeDocumentForm({
               {isSubmitting ? (
                 <div className="flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  جاري الحفظ...
+                  {t('documents.employeeDocumentForm.saving')}
                 </div>
               ) : (
                 <>
                   <Save className="h-4 w-4 ml-2" />
-                  حفظ الوثيقة
+                  {t('documents.employeeDocumentForm.save')}
                 </>
               )}
             </Button>
             <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
               <X className="h-4 w-4 ml-2" />
-              إلغاء
+              {t('documents.employeeDocumentForm.cancel')}
             </Button>
           </div>
         </form>

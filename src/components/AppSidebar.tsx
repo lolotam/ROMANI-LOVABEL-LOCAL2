@@ -1,8 +1,8 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
   Settings,
   Building2,
   LogOut,
@@ -24,27 +24,30 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-
-const mainItems = [
-  { title: "لوحة التحكم", url: "/dashboard", icon: LayoutDashboard },
-  { title: "الموظفين", url: "/employees", icon: Users },
-  { title: "الوثائق", url: "/documents", icon: FileText },
-  { title: "الإعدادات", url: "/settings", icon: Settings },
-];
+import { useLanguage } from "@/contexts/LanguageContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const { logout } = useAuth();
+  const { t } = useLanguage();
+
+  const mainItems = [
+    { title: t('nav.dashboard'), url: "/dashboard", icon: LayoutDashboard },
+    { title: t('nav.employees'), url: "/employees", icon: Users },
+    { title: t('nav.documents'), url: "/documents", icon: FileText },
+    { title: t('nav.settings'), url: "/settings", icon: Settings },
+  ];
 
   const currentPath = location.pathname;
 
   const isActive = (path: string) => currentPath === path;
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    isActive 
-      ? "bg-primary/10 text-primary font-medium border-r-2 border-primary" 
+    isActive
+      ? "bg-primary/10 text-primary font-medium border-r-2 border-primary"
       : "hover:bg-accent/50 text-muted-foreground hover:text-foreground";
 
   return (
@@ -61,8 +64,8 @@ export function AppSidebar() {
               </div>
               {!collapsed && (
                 <div>
-                  <h2 className="text-lg font-bold text-gradient">Romani CureMed</h2>
-                  <p className="text-xs text-muted-foreground">نظام إدارة الوثائق</p>
+                  <h2 className="text-lg font-bold text-gradient">{t('header.title')}</h2>
+                  <p className="text-xs text-muted-foreground">{t('header.subtitle')}</p>
                 </div>
               )}
             </div>
@@ -79,16 +82,16 @@ export function AppSidebar() {
         {/* Navigation Menu */}
         <SidebarGroup className="px-0">
           <SidebarGroupLabel className={`px-4 text-xs uppercase tracking-wide text-muted-foreground ${collapsed ? "sr-only" : ""}`}>
-            القائمة الرئيسية
+            {t('nav.dashboard')}
           </SidebarGroupLabel>
           <SidebarGroupContent className="px-2">
             <SidebarMenu className="space-y-1">
               {mainItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild className="h-auto">
-                    <NavLink 
-                      to={item.url} 
-                      end 
+                    <NavLink
+                      to={item.url}
+                      end
                       className={`${getNavCls({ isActive: isActive(item.url) })} flex items-center space-x-3 px-3 py-3 rounded-lg transition-all duration-200 ${collapsed ? "justify-center" : ""}`}
                     >
                       <item.icon className={`h-5 w-5 ${collapsed ? "" : "ml-3"}`} />
@@ -102,14 +105,15 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* Footer */}
-        <div className="mt-auto p-2 border-t border-border/50">
+        <div className="mt-auto p-2 border-t border-border/50 space-y-1">
+          <ThemeToggle collapsed={collapsed} />
           <Button
             variant="ghost"
             onClick={logout}
             className={`w-full ${collapsed ? "px-2" : "px-3"} py-3 text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors`}
           >
             <LogOut className={`h-5 w-5 ${collapsed ? "" : "ml-2"}`} />
-            {!collapsed && <span>تسجيل الخروج</span>}
+            {!collapsed && <span>{t('nav.logout')}</span>}
           </Button>
         </div>
       </SidebarContent>
