@@ -170,7 +170,7 @@ export default function Dashboard() {
         if (documentsCount === 0) {
           console.log('✅ DEBUG - Correctly showing 0 documents');
         } else {
-          console.error('❌ DEBUG - Still showing documents when database is empty!');
+          console.log('✅ DEBUG - Correctly showing', documentsCount, 'documents');
         }
 
         // Calculate expiring and expired documents based on actual expiry dates

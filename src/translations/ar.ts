@@ -877,6 +877,8 @@ export const ar = {
     yesterday: 'أمس',
     thisWeek: 'هذا الأسبوع',
     thisMonth: 'هذا الشهر',
-    thisYear: 'هذا العام'
+    thisYear: 'هذا العام',
+    notSpecified: 'غير محدد',
+    unknown: 'غير معروف'
   }
 };

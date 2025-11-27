@@ -903,6 +903,8 @@ export const en = {
     yesterday: 'Yesterday',
     thisWeek: 'This Week',
     thisMonth: 'This Month',
-    thisYear: 'This Year'
+    thisYear: 'This Year',
+    notSpecified: 'Not Specified',
+    unknown: 'Unknown'
   }
 };
