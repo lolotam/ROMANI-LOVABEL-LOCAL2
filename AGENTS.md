@@ -1,6 +1,4 @@
----
-type: "always_apply"
----
+[byterover-mcp]
 
 [byterover-mcp]
 

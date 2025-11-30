@@ -141,7 +141,42 @@ export default function Employees() {
   };
 
   const handleDelete = async (employeeId: string) => {
-    console.log('Delete employee:', employeeId);
+    const employee = employees.find(e => e.id === employeeId);
+    if (!employee) return;
+
+    const confirmDelete = window.confirm(
+      `${t('employees.messages.deleteConfirm')}\n\n${employee.name}`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await jsonDatabase.delete('employees', employeeId);
+      
+      if (error) {
+        toast({
+          title: t('employees.messages.error'),
+          description: t('employees.messages.deleteError'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Update local state
+      setEmployees(prev => prev.filter(e => e.id !== employeeId));
+
+      toast({
+        title: t('employees.messages.deleteSuccess'),
+        description: `${employee.name}`,
+      });
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      toast({
+        title: t('employees.messages.error'),
+        description: t('employees.messages.deleteError'),
+        variant: 'destructive',
+      });
+    }
   };
 
   const openEditDialog = (employee: Employee) => {
